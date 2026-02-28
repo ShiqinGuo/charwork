@@ -1,0 +1,6 @@
+.env
+migrations/
+.vscode/
+.venv/
+charwork.egg-info/
+__pycache__/
