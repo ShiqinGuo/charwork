@@ -1,11 +1,10 @@
 from enum import Enum as PyEnum
-from sqlalchemy import String, Text, DateTime, func, ForeignKey
+from typing import Optional
+from sqlalchemy import String, Text, DateTime, func, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.utils.id_generator import generate_id
-
-from app.models.user import User
 
 
 class TargetType(str, PyEnum):
@@ -21,12 +20,17 @@ class Comment(Base):
 
     target_type: Mapped[TargetType] = mapped_column(String(20), nullable=False)
     target_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    parent_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    root_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    reply_to_user_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    reply_count: Mapped[int] = mapped_column(Integer, default=0)
+    like_count: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
 
-    user: Mapped["User"] = relationship("User")
+    user: Mapped["User"] = relationship("User", back_populates="comments") # noqa
 
     def __repr__(self):
         return f"<Comment(id='{self.id}', target='{self.target_type}')>"

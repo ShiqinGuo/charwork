@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.assignment import Assignment
+from app.models.assignment import Assignment, AssignmentStatus
 from app.schemas.assignment import AssignmentCreate, AssignmentUpdate
 
 
@@ -58,3 +59,22 @@ class AssignmentRepository:
     async def delete(self, assignment: Assignment) -> None:
         await self.db.delete(assignment)
         await self.db.commit()
+
+    async def commit_and_refresh(self, assignment: Assignment) -> None:
+        await self.db.commit()
+        await self.db.refresh(assignment)
+
+    async def commit(self) -> None:
+        await self.db.commit()
+
+    async def list_published_due(self, now: datetime) -> List[Assignment]:
+        result = await self.db.execute(
+            select(Assignment).where(
+                and_(
+                    Assignment.status == AssignmentStatus.PUBLISHED,
+                    Assignment.due_date.is_not(None),
+                    Assignment.due_date <= now,
+                )
+            )
+        )
+        return result.scalars().all()

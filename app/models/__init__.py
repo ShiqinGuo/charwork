@@ -7,4 +7,6 @@ from app.models.student import Student  # noqa
 from app.models.assignment import Assignment, AssignmentStatus  # noqa
 from app.models.submission import Submission, SubmissionStatus  # noqa
 from app.models.comment import Comment, TargetType  # noqa
+from app.models.comment_like import CommentLike  # noqa
 from app.models.message import Message  # noqa
+from app.models.event_outbox import EventOutbox  # noqa

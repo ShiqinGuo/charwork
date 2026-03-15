@@ -9,6 +9,7 @@ from app.utils.id_generator import generate_id
 from app.models.teacher import Teacher
 from app.models.student import Student
 from app.models.message import Message
+from app.models.comment import Comment
 
 
 class UserRole(str, PyEnum):
@@ -39,6 +40,9 @@ class User(Base):
         "Message", foreign_keys="Message.sender_id", back_populates="sender")
     received_messages: Mapped[list["Message"]] = relationship(
         "Message", foreign_keys="Message.receiver_id", back_populates="receiver")
+
+    # 评论关系
+    comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="user")
 
     def __repr__(self):
         return f"<User(username='{self.username}', role='{self.role}')>"

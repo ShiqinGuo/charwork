@@ -5,9 +5,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.utils.id_generator import generate_id
 
-from app.models.user import User
-from app.models.submission import Submission
-
 
 class Student(Base):
     __tablename__ = "student"
@@ -20,8 +17,8 @@ class Student(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
-    user: Mapped["User"] = relationship("User", back_populates="student_profile")
-    submissions: Mapped[list["Submission"]] = relationship("Submission", back_populates="student")
+    user: Mapped["User"] = relationship("User", back_populates="student_profile") # noqa
+    submissions: Mapped[list["Submission"]] = relationship("Submission", back_populates="student") # noqa
 
     def __repr__(self):
         return f"<Student(name='{self.name}', class_name='{self.class_name}')>"

@@ -6,9 +6,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.utils.id_generator import generate_id
 
-from app.models.assignment import Assignment
-from app.models.student import Student
-
 
 class SubmissionStatus(str, PyEnum):
     SUBMITTED = 'submitted'
@@ -32,8 +29,8 @@ class Submission(Base):
     submitted_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     graded_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
 
-    assignment: Mapped["Assignment"] = relationship("Assignment", back_populates="submissions")
-    student: Mapped["Student"] = relationship("Student", back_populates="submissions")
+    assignment: Mapped["Assignment"] = relationship("Assignment", back_populates="submissions") # noqa
+    student: Mapped["Student"] = relationship("Student", back_populates="submissions") # noqa
 
     # 评论为多态关联（作业/提交），当前采用目标编号 + 目标类型方式在业务层查询
 

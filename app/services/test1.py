@@ -1,12 +1,25 @@
-from volcengine.visual.VisualService import VisualService
-import os
+def quick_sort(arr):
+    if len(arr) <= 1:
+        return arr
 
-visual_service = VisualService()
-visual_service.set_ak(os.getenv('VOLCENGINE_ACCESS_KEY_ID'))
-visual_service.set_sk(os.getenv('VOLCENGINE_SECRET_ACCESS_KEY'))
+    import random
+    pivot = arr[random.randrange(len(arr))]
 
-resp = visual_service.ocr_normal({
-    "image_url": "http://psbet1y7ve.veimagex-pub.cn-north-1.volces.com/tos-cn-i-psbet1y7ve/c50736c8e54b4a0f996839137e4a7228.jpg~tplv-psbet1y7ve-image.image?sign=1772264440-rand-imagex-64f9d7b23fee206aecbe62b17209aa7b"
-})
+    left_list = []
+    mid_list = []
+    right_list = []
 
-print(resp)
+    for num in arr:
+        if num < pivot:
+            left_list.append(num)
+        elif num > pivot:
+            right_list.append(num)
+        else:
+            mid_list.append(num)
+
+    return quick_sort(left_list) + mid_list + quick_sort(right_list)
+
+
+nums = [3, 6, 8, 10, 1, 2, 1]
+sorted_nums = quick_sort(nums)
+print(sorted_nums)

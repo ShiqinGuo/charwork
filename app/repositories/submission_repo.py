@@ -27,15 +27,19 @@ class SubmissionRepository:
         return result.scalar()
 
     async def create(self, assignment_id: str, submission_in: SubmissionCreate) -> Submission:
+        submission = self.build_submission(assignment_id, submission_in)
+        self.db.add(submission)
+        await self.db.commit()
+        await self.db.refresh(submission)
+        return submission
+
+    def build_submission(self, assignment_id: str, submission_in: SubmissionCreate) -> Submission:
         submission = Submission(
             assignment_id=assignment_id,
             student_id=submission_in.student_id,
             content=submission_in.content,
             image_paths=submission_in.image_paths,
         )
-        self.db.add(submission)
-        await self.db.commit()
-        await self.db.refresh(submission)
         return submission
 
     async def update(self, submission: Submission, update_data: dict) -> Submission:
@@ -44,3 +48,9 @@ class SubmissionRepository:
         await self.db.commit()
         await self.db.refresh(submission)
         return submission
+
+    async def commit(self) -> None:
+        await self.db.commit()
+
+    async def refresh(self, submission: Submission) -> None:
+        await self.db.refresh(submission)

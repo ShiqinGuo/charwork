@@ -7,6 +7,8 @@ from enum import Enum
 class AssignmentStatus(str, Enum):
     DRAFT = 'draft'
     PUBLISHED = 'published'
+    DEADLINE = 'deadline'
+    ARCHIVED = 'archived'
     CLOSED = 'closed'
 
 
@@ -42,3 +44,20 @@ class AssignmentResponse(AssignmentBase):
 class AssignmentListResponse(BaseModel):
     total: int
     items: List[AssignmentResponse]
+
+
+class AssignmentTransitionEvent(str, Enum):
+    PUBLISH = "publish"
+    REACH_DEADLINE = "reach_deadline"
+    ARCHIVE = "archive"
+
+
+class AssignmentTransitionRequest(BaseModel):
+    event: AssignmentTransitionEvent
+
+
+class AssignmentTransitionResponse(BaseModel):
+    assignment: AssignmentResponse
+    from_status: AssignmentStatus
+    to_status: AssignmentStatus
+    event: AssignmentTransitionEvent

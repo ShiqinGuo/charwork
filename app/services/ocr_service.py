@@ -115,7 +115,7 @@ class OCRService:
 
     def _extract_text(self, payload: Any) -> str | list[str]:
         """
-        提取文字，并顺时针90度旋转重组
+        提取文字重组
         :param payload: 百度OCR返回结果
         :return: 重组后的全文本 / 单字符列表
         """

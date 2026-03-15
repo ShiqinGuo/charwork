@@ -2,7 +2,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.schemas.assignment import AssignmentResponse, AssignmentListResponse, AssignmentCreate, AssignmentUpdate
+from app.schemas.assignment import (
+    AssignmentResponse,
+    AssignmentListResponse,
+    AssignmentCreate,
+    AssignmentUpdate,
+    AssignmentTransitionRequest,
+    AssignmentTransitionResponse,
+)
 from app.services.assignment_service import AssignmentService
 
 router = APIRouter()
@@ -74,3 +81,30 @@ async def delete_assignment(
     if not success:
         raise HTTPException(status_code=404, detail="Assignment not found")
     return {"status": "success"}
+
+
+@router.post("/{id}/transitions", response_model=AssignmentTransitionResponse)
+async def transition_assignment(
+    id: str,
+    body: AssignmentTransitionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_teacher_id: str = Depends(get_current_teacher_id),
+):
+    service = AssignmentService(db)
+    try:
+        result = await service.transition_assignment(id, body.event)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not result:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    return result
+
+
+@router.post("/transitions/reach-deadline")
+async def reach_deadline_assignments(
+    db: AsyncSession = Depends(get_db),
+    current_teacher_id: str = Depends(get_current_teacher_id),
+):
+    service = AssignmentService(db)
+    affected = await service.reach_deadline_assignments()
+    return {"status": "success", "affected": affected}

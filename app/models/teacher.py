@@ -5,7 +5,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.utils.id_generator import generate_id
 
-from app.models.user import User
 from app.models.assignment import Assignment
 
 
@@ -20,7 +19,7 @@ class Teacher(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
-    user: Mapped["User"] = relationship("User", back_populates="teacher_profile")
+    user: Mapped["User"] = relationship("User", back_populates="teacher_profile") # noqa
     assignments: Mapped[list["Assignment"]] = relationship("Assignment", back_populates="teacher")
 
     def __repr__(self):
