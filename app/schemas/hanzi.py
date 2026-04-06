@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from enum import Enum
 
 
@@ -36,6 +36,27 @@ class HanziBase(BaseModel):
     comment: Optional[str] = None
     variant: Optional[VariantType] = VariantType.SIMPLIFIED
     standard_image: Optional[str] = None
+    management_system_id: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_character(cls, data):
+        """
+        功能描述：
+            处理character。
+
+        参数：
+            data (Any): 数据。
+
+        返回值：
+            None: 无返回值。
+        """
+        if isinstance(data, dict):
+            copied = dict(data)
+            if not copied.get("character") and copied.get("char"):
+                copied["character"] = copied["char"]
+            return copied
+        return data
 
 
 class HanziCreate(HanziBase):
@@ -44,6 +65,7 @@ class HanziCreate(HanziBase):
 
 class HanziUpdate(BaseModel):
     character: Optional[str] = None
+    char: Optional[str] = None
     image_path: Optional[str] = None
     stroke_count: Optional[int] = None
     structure: Optional[StructureType] = None
@@ -53,10 +75,32 @@ class HanziUpdate(BaseModel):
     comment: Optional[str] = None
     variant: Optional[VariantType] = None
     standard_image: Optional[str] = None
+    management_system_id: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_character(cls, data):
+        """
+        功能描述：
+            处理character。
+
+        参数：
+            data (Any): 数据。
+
+        返回值：
+            None: 无返回值。
+        """
+        if isinstance(data, dict):
+            copied = dict(data)
+            if not copied.get("character") and copied.get("char"):
+                copied["character"] = copied["char"]
+            return copied
+        return data
 
 
 class HanziResponse(HanziBase):
     id: str
+    char: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -66,3 +110,8 @@ class HanziResponse(HanziBase):
 class HanziListResponse(BaseModel):
     total: int
     items: list[HanziResponse]
+    page: Optional[int] = None
+    size: Optional[int] = None
+    skip: Optional[int] = None
+    limit: Optional[int] = None
+    has_more: Optional[bool] = None

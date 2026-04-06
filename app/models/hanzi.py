@@ -1,6 +1,6 @@
 from typing import Optional
 from enum import Enum as PyEnum
-from sqlalchemy import String, Integer, Text, DateTime, func
+from sqlalchemy import String, Integer, Text, DateTime, func, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -34,6 +34,12 @@ class Hanzi(Base):
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
     train_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    management_system_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        ForeignKey("management_system.id"),
+        nullable=True,
+        index=True,
+    )
 
     character: Mapped[str] = mapped_column(String(1), nullable=False, index=True)
     image_path: Mapped[str] = mapped_column(String(255), nullable=True)
@@ -62,4 +68,14 @@ class Hanzi(Base):
     updated_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     def __repr__(self):
+        """
+        功能描述：
+            处理Hanzi。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         return f"<Hanzi(character='{self.character}', id='{self.id}')>"

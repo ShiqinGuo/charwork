@@ -11,6 +11,17 @@ router = APIRouter()
 
 @router.post("/hanzi")
 async def export_hanzi(req: ExportRequest, db: AsyncSession = Depends(get_db)):
+    """
+    功能描述：
+        导出汉字。
+
+    参数：
+        req (ExportRequest): ExportRequest 类型的数据。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        None: 无返回值。
+    """
     service = ExportService(db)
     try:
         result = await service.export_hanzi_to_excel(

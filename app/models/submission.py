@@ -18,6 +18,12 @@ class Submission(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
     assignment_id: Mapped[str] = mapped_column(String(50), ForeignKey("assignment.id"), nullable=False)
     student_id: Mapped[str] = mapped_column(String(50), ForeignKey("student.id"), nullable=False)
+    management_system_id: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        ForeignKey("management_system.id"),
+        nullable=True,
+        index=True,
+    )
 
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image_paths: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
@@ -29,10 +35,20 @@ class Submission(Base):
     submitted_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     graded_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
 
-    assignment: Mapped["Assignment"] = relationship("Assignment", back_populates="submissions") # noqa
-    student: Mapped["Student"] = relationship("Student", back_populates="submissions") # noqa
+    assignment: Mapped["Assignment"] = relationship("Assignment", back_populates="submissions")  # noqa
+    student: Mapped["Student"] = relationship("Student", back_populates="submissions")  # noqa
 
     # 评论为多态关联（作业/提交），当前采用目标编号 + 目标类型方式在业务层查询
 
     def __repr__(self):
+        """
+        功能描述：
+            处理Submission。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         return f"<Submission(id='{self.id}', status='{self.status}')>"

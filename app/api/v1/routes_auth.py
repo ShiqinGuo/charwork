@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends, Header, HTTPException
-from jose import JWTError, jwt
+from fastapi import APIRouter, Depends, HTTPException
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.core.auth import get_current_token, get_current_user
 from app.core.database import get_db
-from app.core.security import create_access_token
-from app.repositories.user_repo import UserRepository
+from app.core.security import SessionUser, create_access_token, revoke_access_token
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.services.user_service import UserService
 
@@ -15,6 +14,17 @@ router = APIRouter()
 
 @router.post("/register")
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    """
+    功能描述：
+        注册routes认证。
+
+    参数：
+        body (RegisterRequest): 接口请求体对象。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        None: 无返回值。
+    """
     service = UserService(db)
     try:
         user = await service.register(
@@ -35,40 +45,63 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    """
+    功能描述：
+        处理routes认证。
+
+    参数：
+        body (LoginRequest): 接口请求体对象。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        None: 无返回值。
+    """
     service = UserService(db)
     user = await service.authenticate(body.username, body.password)
     if not user:
         raise HTTPException(status_code=400, detail="用户名或密码错误")
-    token = create_access_token(subject=user.id)
+    try:
+        token = await create_access_token(user=user)
+    except RedisError as exc:
+        raise HTTPException(status_code=503, detail="会话服务不可用") from exc
     return TokenResponse(access_token=token)
 
 
 @router.get("/me")
-async def me(authorization: str | None = Header(default=None), db: AsyncSession = Depends(get_db)):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="缺少 Authorization")
+async def me(current_user: SessionUser = Depends(get_current_user)):
+    """
+    功能描述：
+        处理routes认证。
 
-    parts = authorization.split(" ", 1)
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(status_code=401, detail="Authorization 格式错误")
+    参数：
+        current_user (SessionUser): 当前登录用户对象。
 
-    token = parts[1]
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="无效令牌")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="无效令牌")
-
-    user = await UserRepository(db).get(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-
+    返回值：
+        None: 无返回值。
+    """
     return {
-        "id": user.id,
-        "email": user.email,
-        "username": user.username,
-        "role": user.role,
-        "is_active": user.is_active,
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.username,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
     }
+
+
+@router.post("/logout")
+async def logout(token: str = Depends(get_current_token)):
+    """
+    功能描述：
+        处理routes认证。
+
+    参数：
+        token (str): 令牌字符串。
+
+    返回值：
+        None: 无返回值。
+    """
+    try:
+        await revoke_access_token(token)
+    except RedisError as exc:
+        raise HTTPException(status_code=503, detail="会话服务不可用") from exc
+    return {"success": True}

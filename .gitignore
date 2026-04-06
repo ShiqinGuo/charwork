@@ -1,6 +1,8 @@
 .env
+.trae/
 migrations/
 .vscode/
 .venv/
 charwork.egg-info/
 __pycache__/
+test*.py

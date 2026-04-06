@@ -1,3 +1,8 @@
+"""
+为什么这样做：导出字段走白名单，避免任意属性泄露并保持导出结构稳定。
+特殊逻辑：时间字段统一转 ISO 字符串，确保 Excel 与后续系统导入的边界兼容性。
+"""
+
 import os
 from datetime import datetime
 from typing import Optional
@@ -11,6 +16,17 @@ from app.repositories.hanzi_repo import HanziRepository
 
 class ExportService:
     def __init__(self, db: AsyncSession, output_dir: Optional[str] = None):
+        """
+        功能描述：
+            初始化ExportService并准备运行所需的依赖对象。
+
+        参数：
+            db (AsyncSession): 数据库会话，用于执行持久化操作。
+            output_dir (Optional[str]): 字符串结果。
+
+        返回值：
+            None: 无返回值。
+        """
         self.db = db
         self.repo = HanziRepository(db)
         self.output_dir = output_dir or os.path.join(settings.MEDIA_ROOT, "export_results")
@@ -23,6 +39,20 @@ class ExportService:
         variant: Optional[str] = None,
         search: Optional[str] = None,
     ) -> dict:
+        """
+        功能描述：
+            导出汉字toExcel。
+
+        参数：
+            fields (list[str]): 列表结果。
+            structure (Optional[str]): 字符串结果。
+            level (Optional[str]): 字符串结果。
+            variant (Optional[str]): 字符串结果。
+            search (Optional[str]): 字符串结果。
+
+        返回值：
+            dict: 返回字典形式的结果数据。
+        """
         os.makedirs(self.output_dir, exist_ok=True)
 
         allowed_fields = {

@@ -16,8 +16,9 @@
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| module | keyword | 模块标识 hanzi/assignment/discussion/student |
+| module | keyword | 模块标识 hanzi/assignment/discussion/course/teaching_class/student |
 | source_id | keyword | 业务主键ID |
+| management_system_ids | keyword | 可访问的管理系统作用域ID集合 |
 | title | text | 标题字段 |
 | content | text | 正文字段 |
 
@@ -38,28 +39,36 @@
 - `modules`：可选，模块过滤数组
 - `limit`：返回条数
 
+权限要求：
+- 接口必须登录
+- 请求必须绑定管理系统作用域
+- 检索结果必须受 `management_system_id` 过滤
+- 学生角色仅返回其可访问课程/班级范围内的数据
+
 ## 4. 核心业务逻辑
 
 ### 4.1 启动检查与首轮初始化流程
 
 1. 应用启动时检查索引是否存在，不存在则创建
-2. 检查索引文档数，若为 0 执行首轮全量导入
-3. 若索引已有文档则跳过初始化，不做重复全量同步
+2. 应用启动时始终执行一次业务索引全量补齐
+3. 共享字典索引初始化与业务索引初始化分开处理，互不影响
 
 ### 4.2 CDC 增量同步流程
 
-1. Canal 监听 MySQL Binlog，仅订阅 `assignment/comment/hanzi/student`
+1. Canal 监听 MySQL Binlog，仅订阅配置驱动开启的业务表，当前默认包括 `assignment/comment/hanzi/course/teaching_class/student`
 2. Canal 以 flat message 发送到 RabbitMQ 队列 `canal.search.sync`
-3. 独立轻量级监听服务消费 RabbitMQ，解析 insert/update/delete
-4. 监听服务调用检索同步逻辑：insert/update 执行 ES upsert，delete 执行 ES delete
+3. 独立轻量级监听服务按注册表识别业务模块并消费 RabbitMQ 消息
+4. 监听服务调用检索同步逻辑：insert/update 按注册表从数据库重建文档并执行 ES upsert，delete 执行 ES delete
 5. 通过固定文档ID保证重复投递下的幂等覆盖，消费失败走 RabbitMQ 重投或死信
 
 ### 4.3 检索流程
 
 1. 使用 multi_match 查询 title 与 content
-2. 按 score 相关性排序
-3. 将命中结果统一映射为 `module + id + title + content + score`
-4. 返回前端统一结构，前端可按 module 分组展示
+2. 按 `management_system_ids` 过滤到当前管理系统作用域
+3. 学生角色再按课程/班级可见性做二次权限过滤
+4. 按 score 相关性排序
+5. 将命中结果统一映射为 `module + id + title + content + score`
+6. 返回前端统一结构，前端可按 module 分组展示
 
 ## 5. 关键技术使用
 

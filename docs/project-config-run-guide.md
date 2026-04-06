@@ -47,7 +47,7 @@ SEARCH_SYNC_RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 SEARCH_SYNC_RABBITMQ_QUEUE=canal.search.sync
 SEARCH_SYNC_RABBITMQ_PREFETCH=50
 SEARCH_SYNC_CANAL_SCHEMA=charwork_db
-SEARCH_SYNC_CANAL_TABLES=assignment,comment,hanzi,student
+SEARCH_SYNC_CANAL_TABLES=assignment,comment,hanzi,course,teaching_class,student,hanzi_dictionary
 
 SECRET_KEY=change_this_to_a_secure_random_key
 ALGORITHM=HS256
@@ -70,8 +70,15 @@ Canal 需开启 RabbitMQ MQ 模式并投递到检索队列，示例：
 canal.serverMode=rabbitmq
 canal.mq.flatMessage=true
 canal.mq.topic=canal.search.sync
-canal.mq.dynamicTopic=charwork_db.assignment,charwork_db.comment,charwork_db.hanzi,charwork_db.student
+canal.mq.dynamicTopic=charwork_db.assignment,charwork_db.comment,charwork_db.hanzi,charwork_db.course,charwork_db.teaching_class,charwork_db.student,charwork_db.hanzi_dictionary
 ```
+
+修改 `SEARCH_SYNC_CANAL_TABLES` 或 `canal.mq.dynamicTopic` 后，需要同时重启：
+
+- API 服务
+- `python -m app.services.search_sync_worker` 检索监听进程
+
+如果服务器使用 systemd / supervisor / docker compose 等自启动方式，还需要同步更新自启动配置中的环境变量与启动参数，否则机器重启后会回到旧配置。
 
 ## 4. 数据库初始化
 

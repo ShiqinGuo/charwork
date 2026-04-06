@@ -11,7 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 def extract_zip_to_temp(zip_path: str, output_dir: str) -> str:
-    """将压缩包解压到临时目录，并返回临时目录路径"""
+    """
+    功能描述：
+        提取ziptotemp。
+
+    参数：
+        zip_path (str): 文件或资源路径。
+        output_dir (str): 字符串结果。
+
+    返回值：
+        str: 返回str类型的处理结果。
+    """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
@@ -39,8 +49,15 @@ def extract_zip_to_temp(zip_path: str, output_dir: str) -> str:
 
 def merge_images(image_paths: List[str], grid_size: Tuple[int, int] = (10, 10)) -> List[str]:
     """
-    将多张图片合并为一张大图，用于批量 OCR。网格拼接（例如 10*10）以提升批量识别效率
-    压缩至2160*2160
+    功能描述：
+        合并图片。
+
+    参数：
+        image_paths (List[str]): 待处理图片路径列表。
+        grid_size (Tuple[int, int]): Tuple[int, int] 类型的数据。
+
+    返回值：
+        List[str]: 返回List[str]类型的处理结果。
     """
 
     from PIL import Image
@@ -57,12 +74,12 @@ def merge_images(image_paths: List[str], grid_size: Tuple[int, int] = (10, 10)) 
         cols, rows = grid_size
         num = len(images)
         actual_cols = min(cols, num)
-        actual_rows = math.ceil(num / cols) if num != cols*rows else rows
+        actual_rows = math.ceil(num / cols) if num != cols * rows else rows
 
         w, h = images[0].size
-        need_resize = max(w*actual_cols, h*actual_rows) > 2160
+        need_resize = max(w * actual_cols, h * actual_rows) > 2160
         if need_resize:
-            scale = min(2160 / (w*actual_cols), 2160 / (h*actual_rows))
+            scale = min(2160 / (w * actual_cols), 2160 / (h * actual_rows))
             w, h = int(w * scale), int(h * scale)
 
         merged_img = Image.new('RGB', (w * actual_cols, h * actual_rows), (255, 255, 255))

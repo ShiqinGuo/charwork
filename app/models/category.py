@@ -17,4 +17,14 @@ class Category(Base):
     updated_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     def __repr__(self):
+        """
+        功能描述：
+            处理Category。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         return f"<Category(name='{self.name}')>"

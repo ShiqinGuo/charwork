@@ -30,7 +30,17 @@ class Comment(Base):
 
     created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
 
-    user: Mapped["User"] = relationship("User", back_populates="comments") # noqa
+    user: Mapped["User"] = relationship("User", back_populates="comments")  # noqa
 
     def __repr__(self):
+        """
+        功能描述：
+            处理Comment。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         return f"<Comment(id='{self.id}', target='{self.target_type}')>"

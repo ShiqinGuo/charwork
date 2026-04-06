@@ -43,6 +43,26 @@ class User(Base):
 
     # 评论关系
     comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="user")
+    management_system_links: Mapped[list["UserManagementSystem"]] = relationship(
+        "UserManagementSystem",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    owned_management_systems: Mapped[list["ManagementSystem"]] = relationship(
+        "ManagementSystem",
+        back_populates="owner_user",
+        foreign_keys="ManagementSystem.owner_user_id",
+    )
 
     def __repr__(self):
+        """
+        功能描述：
+            处理User。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         return f"<User(username='{self.username}', role='{self.role}')>"

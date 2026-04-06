@@ -1,3 +1,8 @@
+"""
+为什么这样做：识别链路采用“火山上传换公网 URL + 百度 OCR”组合，降低本地文件直传第三方的不稳定因素。
+特殊逻辑：访问令牌做提前失效缓存与双配置校验，避免临界过期和半配置状态触发批量失败。
+"""
+
 import logging
 import os
 import time
@@ -20,6 +25,16 @@ logger = logging.getLogger(__name__)
 class OCRService:
     def __init__(self):
         # 原有火山引擎配置（保留，不影响原有逻辑）
+        """
+        功能描述：
+            初始化OCRService并准备运行所需的依赖对象。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         self.volcengine_access_key = settings.VOLCENGINE_ACCESS_KEY_ID.strip()
         self.volcengine_secret_key = settings.VOLCENGINE_SECRET_ACCESS_KEY.strip()
         self.volcengine_region = settings.VOLCENGINE_REGION
@@ -41,12 +56,33 @@ class OCRService:
         self._baidu_token_advance_expire = 300
 
     def _default_store_key(self, image_path: str) -> str:
+        """
+        功能描述：
+            处理存储key。
+
+        参数：
+            image_path (str): 待处理图片的本地路径。
+
+        返回值：
+            str: 返回str类型的处理结果。
+        """
         ext = os.path.splitext(image_path)[1].lower() or ".png"
         with open(image_path, "rb") as f:
             digest = md5(f.read()).hexdigest()
         return f"ocr/{digest}{ext}"
 
     def _upload_image(self, image_path: str, store_key: Optional[str] = None) -> dict[str, Any]:
+        """
+        功能描述：
+            上传图片。
+
+        参数：
+            image_path (str): 待处理图片的本地路径。
+            store_key (Optional[str]): 对象存储中的文件键。
+
+        返回值：
+            dict[str, Any]: 返回字典形式的结果数据。
+        """
         if not os.path.isfile(image_path):
             raise ValueError("图片文件不存在")
         if not self.volcengine_service_id:
@@ -62,7 +98,16 @@ class OCRService:
         return {"URI": res.get("Results", [{}])[0].get("Uri", ""), "StoreKey": store_key, "raw": res}
 
     def _transform_uri2url(self, uri: str) -> str:
-        """将 ImageX URI 转换为可公网访问的URL（供百度OCR拉取图片）"""
+        """
+        功能描述：
+            转换uri2url。
+
+        参数：
+            uri (str): 对象存储返回的资源URI。
+
+        返回值：
+            str: 返回str类型的处理结果。
+        """
         params = {
             "ServiceId": self.volcengine_service_id,
             "Domain": settings.IMAGEX_DEFAULT_DOMAIN,
@@ -72,6 +117,16 @@ class OCRService:
         return self.imagex_service.get_resource_url(params).get("Result", {}).get("URL", "")
 
     def _get_baidu_access_token(self) -> str:
+        """
+        功能描述：
+            按条件获取百度access令牌。
+
+        参数：
+            无。
+
+        返回值：
+            str: 返回str类型的处理结果。
+        """
         if self._baidu_access_token and (
             time.time() < self._baidu_access_token_expires_at - self._baidu_token_advance_expire
         ):
@@ -92,9 +147,14 @@ class OCRService:
 
     def _ai_process_ocr(self, image_url: str) -> dict[str, Any]:
         """
-        调用百度OCR接口，完成图片识别流程
-        :param image_url: 图片公网可访问URL
-        :return: 百度OCR完整返回结果
+        功能描述：
+            处理processOCR。
+
+        参数：
+            image_url (str): 请求或访问地址。
+
+        返回值：
+            dict[str, Any]: 返回字典形式的结果数据。
         """
         url = "https://aip.baidubce.com/rest/2.0/ocr/v1/handwriting?access_token=" + self._get_baidu_access_token()
 
@@ -115,9 +175,14 @@ class OCRService:
 
     def _extract_text(self, payload: Any) -> str | list[str]:
         """
-        提取文字重组
-        :param payload: 百度OCR返回结果
-        :return: 重组后的全文本 / 单字符列表
+        功能描述：
+            提取文本。
+
+        参数：
+            payload (Any): 待处理的原始数据载荷。
+
+        返回值：
+            str | list[str]: 返回str | list[str]类型的处理结果。
         """
         if not isinstance(payload, dict):
             return ""
@@ -138,9 +203,14 @@ class OCRService:
 
     async def recognize_image(self, image_path: str) -> str | list[str]:
         """
-        识别单张图片，对外核心调用方法（已切换为百度OCR）
-        :param image_path: 本地图片路径
-        :return: 识别结果（单字符str/多字符list）
+        功能描述：
+            识别图片。
+
+        参数：
+            image_path (str): 待处理图片的本地路径。
+
+        返回值：
+            str | list[str]: 返回str | list[str]类型的处理结果。
         """
         # 校验百度OCR配置
         if not self.baidu_api_key or not self.baidu_secret_key:
@@ -151,6 +221,16 @@ class OCRService:
 
         def _work() -> str | list[str]:
             # 上传图片到火山，获取公网URL
+            """
+            功能描述：
+                处理OCRService。
+
+            参数：
+                无。
+
+            返回值：
+                str | list[str]: 返回str | list[str]类型的处理结果。
+            """
             upload_res = self._upload_image(image_path)
             uri = upload_res.get("URI", "")
             image_url = self._transform_uri2url(uri)
@@ -165,12 +245,30 @@ class OCRService:
         return await run_in_threadpool(_work)
 
     async def recognize(self, image_path: str) -> dict[str, Any]:
-        """识别单张图片中的字符，返回单个字符"""
+        """
+        功能描述：
+            识别OCRService。
+
+        参数：
+            image_path (str): 待处理图片的本地路径。
+
+        返回值：
+            dict[str, Any]: 返回字典形式的结果数据。
+        """
         char = await self.recognize_image(image_path)
         return {"characters": char, "image_path": image_path}
 
     async def batch_recognize(self, image_paths: list[str]) -> dict[str, Any]:
-        """批量识别多张图片中的字符，返回字符列表"""
+        """
+        功能描述：
+            批量处理识别。
+
+        参数：
+            image_paths (list[str]): 待处理图片路径列表。
+
+        返回值：
+            dict[str, Any]: 返回字典形式的结果数据。
+        """
         merged_paths = await run_in_threadpool(merge_images, image_paths)
         char_list = []
         for merged_path in merged_paths:

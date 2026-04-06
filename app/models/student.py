@@ -17,8 +17,18 @@ class Student(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
-    user: Mapped["User"] = relationship("User", back_populates="student_profile") # noqa
-    submissions: Mapped[list["Submission"]] = relationship("Submission", back_populates="student") # noqa
+    user: Mapped["User"] = relationship("User", back_populates="student_profile")  # noqa
+    submissions: Mapped[list["Submission"]] = relationship("Submission", back_populates="student")  # noqa
 
     def __repr__(self):
+        """
+        功能描述：
+            处理Student。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         return f"<Student(name='{self.name}', class_name='{self.class_name}')>"

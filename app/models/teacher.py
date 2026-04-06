@@ -19,8 +19,18 @@ class Teacher(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
-    user: Mapped["User"] = relationship("User", back_populates="teacher_profile") # noqa
+    user: Mapped["User"] = relationship("User", back_populates="teacher_profile")  # noqa
     assignments: Mapped[list["Assignment"]] = relationship("Assignment", back_populates="teacher")
 
     def __repr__(self):
+        """
+        功能描述：
+            处理Teacher。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         return f"<Teacher(name='{self.name}', department='{self.department}')>"
