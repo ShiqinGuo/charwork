@@ -1,3 +1,9 @@
+"""
+应用主入口模块。
+
+初始化 FastAPI 应用，配置中间件（CORS、静态文件）、路由、生命周期事件等。
+"""
+
 import os
 from contextlib import asynccontextmanager
 
@@ -6,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import (
+    routes_ai_chat,
     routes_assignment_reminders,
     routes_assignments,
     routes_auth,
@@ -53,6 +60,7 @@ ROUTER_CONFIGS = (
     (routes_comments.router, f"{settings.API_V1_STR}/comments", ["comments"]),
     (routes_messages.router, f"{settings.API_V1_STR}/messages", ["messages"]),
     (routes_search.router, f"{settings.API_V1_STR}/search", ["search"]),
+    (routes_ai_chat.router, f"{settings.API_V1_STR}/ai-chat", ["ai-chat"]),
     (routes_teaching_classes.router, f"{settings.API_V1_STR}/teaching-classes", ["teaching-classes"]),
 )
 

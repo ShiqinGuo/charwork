@@ -91,7 +91,7 @@ async def _build_assignment_document(_db: AsyncSession, item: Assignment) -> Sea
         title=item.title,
         content=f"{item.title} {item.description or ''}",
         management_system_ids=[item.management_system_id],
-        extra_fields={"course_id": item.course_id or ""},
+        extra_fields={"course_id": item.course_id or "", "target_type": "assignment"},
     )
 
 
@@ -172,7 +172,7 @@ async def _build_comment_document(db: AsyncSession, item: Comment) -> SearchDocu
         title=str(item.target_type),
         content=item.content,
         management_system_ids=[management_system_id],
-        extra_fields={"course_id": course_id or "", "target_type": str(item.target_type), "target_id": item.target_id},
+        extra_fields={"course_id": course_id or "", "target_type": "discussion", "comment_target_type": str(item.target_type), "target_id": item.target_id},
     )
 
 
@@ -225,6 +225,7 @@ async def _build_hanzi_document(_db: AsyncSession, item: Hanzi) -> SearchDocumen
         title=item.character,
         content=f"{item.character} {item.pinyin or ''} {item.comment or ''}",
         management_system_ids=[item.management_system_id],
+        extra_fields={"target_type": "hanzi"},
     )
 
 
@@ -275,7 +276,7 @@ async def _build_course_document(_db: AsyncSession, item: Course) -> SearchDocum
         title=item.name,
         content=f"{item.name} {item.code or ''} {item.description or ''}",
         management_system_ids=[item.management_system_id],
-        extra_fields={"teaching_class_id": item.teaching_class_id},
+        extra_fields={"teaching_class_id": item.teaching_class_id, "target_type": "course"},
     )
 
 
@@ -326,6 +327,7 @@ async def _build_teaching_class_document(_db: AsyncSession, item: TeachingClass)
         title=item.name,
         content=f"{item.name} {item.description or ''} {item.status}",
         management_system_ids=[item.management_system_id],
+        extra_fields={"target_type": "teaching_class"},
     )
 
 
@@ -382,6 +384,7 @@ async def _build_student_document(db: AsyncSession, item: Student) -> SearchDocu
         title=item.name,
         content=f"{item.name} {item.class_name or ''}",
         management_system_ids=management_system_ids,
+        extra_fields={"target_type": "student"},
     )
 
 

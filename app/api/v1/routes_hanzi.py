@@ -1,14 +1,27 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_admin, get_current_user, get_current_teacher
 from app.core.database import get_db
 from app.core.management_scope import ManagementScope, get_management_scope
 from app.models.teacher import Teacher
 from app.models.user import User
-from app.schemas.hanzi import HanziResponse, HanziListResponse, HanziCreate, HanziUpdate
+from app.schemas.hanzi import (
+    HanziCreate,
+    HanziListResponse,
+    HanziOCRBatchPrefillResponse,
+    HanziOCRPrefillResponse,
+    HanziResponse,
+    HanziUpdate,
+)
 from app.schemas.hanzi_dictionary import (
+    HanziDatasetAppendItemsRequest,
+    HanziDatasetAppendItemsResponse,
     HanziDatasetCreate,
+    HanziDatasetCreateHanziRequest,
+    HanziDatasetCreateHanziResponse,
+    HanziDatasetDetailResponse,
+    HanziDatasetItemsListResponse,
     HanziDatasetListResponse,
     HanziDatasetResponse,
     HanziDictionaryInitRequest,
@@ -30,6 +43,12 @@ async def list_hanzi(
     limit: Optional[int] = Query(None, ge=1, le=100),
     page: Optional[int] = Query(None, ge=1),
     size: Optional[int] = Query(None, ge=1, le=100),
+    character: Optional[str] = None,
+    pinyin: Optional[str] = None,
+    stroke_count: Optional[int] = Query(None, ge=1),
+    stroke_pattern: Optional[str] = Query(None, min_length=1),
+    dataset_id: Optional[str] = None,
+    source: Optional[str] = None,
     structure: Optional[str] = None,
     level: Optional[str] = None,
     variant: Optional[str] = None,
@@ -65,6 +84,12 @@ async def list_hanzi(
         level=level,
         variant=variant,
         search=search,
+        character=character,
+        pinyin=pinyin,
+        stroke_count=stroke_count,
+        stroke_pattern=stroke_pattern,
+        dataset_id=dataset_id,
+        source=source,
         management_system_id=scope.management_system_id,
         page=pagination["page"],
         size=pagination["size"],
@@ -77,20 +102,11 @@ async def create_hanzi(
     scope: ManagementScope = Depends(get_management_scope),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    功能描述：
-        创建汉字并返回结果。
-
-    参数：
-        hanzi_in (HanziCreate): 汉字输入对象。
-        scope (ManagementScope): 管理系统作用域对象。
-        db (AsyncSession): 数据库会话，用于执行持久化操作。
-
-    返回值：
-        None: 无返回值。
-    """
     service = HanziService(db)
-    return await service.create_hanzi(hanzi_in, scope.management_system_id)
+    try:
+        return await service.create_hanzi(hanzi_in, scope.management_system_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/strokes/{character}")
@@ -283,24 +299,130 @@ async def create_hanzi_dataset(
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    功能描述：
-        创建汉字数据集并返回结果。
+    try:
+        return await HanziDictionaryService(db).create_dataset(
+            management_system_id=scope.management_system_id,
+            created_by_user_id=current_teacher.user_id,
+            body=body,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    参数：
-        body (HanziDatasetCreate): 接口请求体对象。
-        scope (ManagementScope): 管理系统作用域对象。
-        current_teacher (Teacher): 当前登录教师对象。
-        db (AsyncSession): 数据库会话，用于执行持久化操作。
 
-    返回值：
-        None: 无返回值。
-    """
-    return await HanziDictionaryService(db).create_dataset(
-        management_system_id=scope.management_system_id,
-        created_by_user_id=current_teacher.user_id,
-        body=body,
-    )
+@router.get("/datasets/{dataset_id}", response_model=HanziDatasetDetailResponse)
+async def get_hanzi_dataset(
+    dataset_id: str,
+    scope: ManagementScope = Depends(get_management_scope),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await HanziDictionaryService(db).get_dataset(dataset_id, scope.management_system_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/datasets/{dataset_id}/items", response_model=HanziDatasetItemsListResponse)
+async def list_hanzi_dataset_items(
+    dataset_id: str,
+    skip: Optional[int] = Query(None, ge=0),
+    limit: Optional[int] = Query(None, ge=1, le=100),
+    page: Optional[int] = Query(None, ge=1),
+    size: Optional[int] = Query(None, ge=1, le=100),
+    scope: ManagementScope = Depends(get_management_scope),
+    db: AsyncSession = Depends(get_db),
+):
+    pagination = resolve_pagination(page=page, size=size, skip=skip, limit=limit)
+    try:
+        return await HanziDictionaryService(db).list_dataset_items(
+            dataset_id=dataset_id,
+            management_system_id=scope.management_system_id,
+            skip=pagination["skip"],
+            limit=pagination["limit"],
+            page=pagination["page"],
+            size=pagination["size"],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.post("/datasets/{dataset_id}/items", response_model=HanziDatasetAppendItemsResponse)
+async def append_hanzi_dataset_items(
+    dataset_id: str,
+    body: HanziDatasetAppendItemsRequest,
+    scope: ManagementScope = Depends(get_management_scope),
+    _current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await HanziDictionaryService(db).append_dataset_items(
+            dataset_id=dataset_id,
+            management_system_id=scope.management_system_id,
+            body=body,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/datasets/{dataset_id}/hanzi", response_model=HanziDatasetCreateHanziResponse)
+async def create_hanzi_in_dataset(
+    dataset_id: str,
+    body: HanziDatasetCreateHanziRequest,
+    scope: ManagementScope = Depends(get_management_scope),
+    _current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    service = HanziDictionaryService(db)
+    try:
+        return await service.create_hanzi_in_dataset(
+            dataset_id=dataset_id,
+            management_system_id=scope.management_system_id,
+            hanzi_in=body.hanzi,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.delete("/datasets/{dataset_id}")
+async def delete_hanzi_dataset(
+    dataset_id: str,
+    scope: ManagementScope = Depends(get_management_scope),
+    _current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    service = HanziDictionaryService(db)
+    try:
+        await service.delete_dataset(dataset_id, scope.management_system_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"status": "success"}
+
+
+@router.post("/ocr-prefill", response_model=HanziOCRPrefillResponse)
+async def ocr_prefill_hanzi(
+    file: UploadFile = File(...),
+    scope: ManagementScope = Depends(get_management_scope),
+    _current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    service = HanziService(db)
+    try:
+        return await service.build_prefill_by_upload(file)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/ocr-prefill/batch", response_model=HanziOCRBatchPrefillResponse)
+async def ocr_prefill_hanzi_batch(
+    files: list[UploadFile] = File(...),
+    scope: ManagementScope = Depends(get_management_scope),
+    _current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    service = HanziService(db)
+    try:
+        return await service.build_batch_prefill_by_uploads(files)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/{id}", response_model=HanziResponse)
@@ -335,21 +457,11 @@ async def update_hanzi(
     scope: ManagementScope = Depends(get_management_scope),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    功能描述：
-        更新汉字并返回最新结果。
-
-    参数：
-        id (str): 目标记录ID。
-        hanzi_in (HanziUpdate): 汉字输入对象。
-        scope (ManagementScope): 管理系统作用域对象。
-        db (AsyncSession): 数据库会话，用于执行持久化操作。
-
-    返回值：
-        None: 无返回值。
-    """
     service = HanziService(db)
-    hanzi = await service.update_hanzi(id, hanzi_in, scope.management_system_id)
+    try:
+        hanzi = await service.update_hanzi(id, hanzi_in, scope.management_system_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if not hanzi:
         raise HTTPException(status_code=404, detail="汉字不存在")
     return hanzi

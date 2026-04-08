@@ -6,6 +6,7 @@ from app.models.user import User, UserRole  # noqa
 from app.models.teacher import Teacher  # noqa
 from app.models.student import Student  # noqa
 from app.models.assignment import Assignment, AssignmentStatus  # noqa
+from app.models.ai_chat import AIChatConversation, AIChatMemoryFact, AIChatMessage  # noqa
 from app.models.assignment_attachment_upload import AssignmentAttachmentUpload  # noqa
 from app.models.assignment_reminder import (  # noqa
     AssignmentReminderExecution,
@@ -26,6 +27,7 @@ from app.models.custom_field import (  # noqa
 from app.models.message import Message  # noqa
 from app.models.event_outbox import EventOutbox  # noqa
 from app.models.management_system import ManagementSystem, ManagementSystemAccessRole, UserManagementSystem  # noqa
+from app.models.management_system_record import ManagementSystemRecord  # noqa
 from app.models.teaching_class import (  # noqa
     TeachingClass,
     TeachingClassJoinToken,

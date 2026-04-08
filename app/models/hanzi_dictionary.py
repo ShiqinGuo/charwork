@@ -46,9 +46,10 @@ class HanziDatasetItem(Base):
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
     dataset_id: Mapped[str] = mapped_column(String(50), ForeignKey("hanzi_dataset.id"), nullable=False, index=True)
-    dictionary_id: Mapped[str] = mapped_column(
+    hanzi_id: Mapped[str] = mapped_column(
+        "dictionary_id",
         String(50),
-        ForeignKey("hanzi_dictionary.id"),
+        ForeignKey("hanzi.id"),
         nullable=False,
         index=True,
     )

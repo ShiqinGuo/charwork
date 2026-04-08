@@ -1,3 +1,10 @@
+"""
+作业数据模型模块。
+
+定义作业实体及其状态枚举，包括草稿、已发布、截止、已归档、已关闭等状态。
+作业与教师、课程、提交等实体建立关系映射。
+"""
+
 from typing import Optional, List
 from enum import Enum as PyEnum
 from sqlalchemy import String, Text, DateTime, func, JSON, ForeignKey
@@ -8,6 +15,7 @@ from app.utils.id_generator import generate_id
 
 
 class AssignmentStatus(str, PyEnum):
+    """作业状态枚举。"""
     DRAFT = 'draft'
     PUBLISHED = 'published'
     DEADLINE = 'deadline'
@@ -16,6 +24,12 @@ class AssignmentStatus(str, PyEnum):
 
 
 class Assignment(Base):
+    """
+    作业实体模型。
+
+    对应数据库 assignment 表，存储作业基本信息（标题、描述、汉字列表、指导步骤、附件）
+    和状态信息（状态、截止日期）。支持多租户隔离（management_system_id）。
+    """
     __tablename__ = "assignment"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)

@@ -1,3 +1,10 @@
+"""
+应用配置模块。
+
+通过 pydantic-settings 从 .env 文件和环境变量中加载全局配置项，
+涵盖数据库、Redis、Elasticsearch、AI 服务、火山引擎、安全密钥等基础设施参数。
+"""
+
 import json
 import os
 from typing import Any, List, Union
@@ -6,12 +13,13 @@ from urllib.parse import quote_plus
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
+# 外部服务默认连接地址（开发环境）
 DEFAULT_EXTERNAL_SERVICE_URLS = {
     "REDIS_URL": "redis://:Gsq142857@115.190.28.100:6379/0",
     "ELASTICSEARCH_URL": "http://115.190.28.100:9200",
     "SEARCH_SYNC_RABBITMQ_URL": "amqp://admin:admin123@115.190.28.100:5672/",
 }
+# 搜索同步默认配置（Canal + RabbitMQ + Elasticsearch）
 DEFAULT_SEARCH_SYNC_CONFIG = {
     "ELASTICSEARCH_INDEX_PREFIX": "charwork",
     "SEARCH_SYNC_ENABLED": True,
@@ -19,9 +27,11 @@ DEFAULT_SEARCH_SYNC_CONFIG = {
     "SEARCH_SYNC_RABBITMQ_PREFETCH": 50,
     "SEARCH_SYNC_CANAL_TABLES": "assignment,comment,hanzi,course,teaching_class,student,hanzi_dictionary",
 }
+# AI 智能服务默认配置
 DEFAULT_AI_CONFIG = {
     "AI_PROVIDER": "ark",
 }
+# 火山引擎 ImageX 图片处理服务默认配置
 DEFAULT_VOLCENGINE_CONFIG = {
     "VOLCENGINE_REGION": "cn-north-1",
     "IMAGEX_HOST": "imagex.volcengineapi.com",
@@ -30,6 +40,7 @@ DEFAULT_VOLCENGINE_CONFIG = {
     "IMAGEX_EXPIRE": 600,
     "IMAGEX_TEMPLATE_ID": "tplv-psbet1y7ve-image",
 }
+# JWT / 会话安全默认配置
 DEFAULT_SECURITY_CONFIG = {
     "SECRET_KEY": "change_me",
     "ALGORITHM": "HS256",
@@ -64,13 +75,13 @@ class Settings(BaseSettings):
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
         """
         功能描述：
-            处理corsorigins。
+            解析并组装 CORS 允许的源列表，兼容 JSON 数组字符串和逗号分隔两种写法。
 
         参数：
-            v (Union[str, List[str]]): Union[str, List[str]] 类型的数据。
+            v (Union[str, List[str]]): 从环境变量或配置文件读入的原始值。
 
         返回值：
-            List[str]: 返回List[str]类型的处理结果。
+            List[str]: 解析后的跨域源列表。
         """
         if v is None:
             return []
@@ -109,14 +120,15 @@ class Settings(BaseSettings):
     def assemble_db_connection(cls, v: str | None, info: ValidationInfo) -> Any:
         """
         功能描述：
-            处理数据库connection。
+            根据 MYSQL_* 配置项拼装异步数据库连接 URL（mysql+aiomysql://...）。
+            若已显式提供完整 DATABASE_URL 则直接返回。
 
         参数：
-            v (str | None): 字符串结果。
-            info (ValidationInfo): ValidationInfo 类型的数据。
+            v (str | None): 显式传入的数据库连接字符串，为 None 时自动拼装。
+            info (ValidationInfo): Pydantic 验证上下文，可从中获取其他字段的值。
 
         返回值：
-            Any: 返回Any类型的处理结果。
+            Any: 完整的数据库连接 URL 字符串。
         """
         if isinstance(v, str):
             return v
@@ -148,11 +160,16 @@ class Settings(BaseSettings):
     SEARCH_SYNC_CANAL_SCHEMA: str | None = None
     SEARCH_SYNC_CANAL_TABLES: str = DEFAULT_SEARCH_SYNC_CONFIG["SEARCH_SYNC_CANAL_TABLES"]
 
-    # 智能识别 / 火山引擎
+    # 智能识别 / AI 大模型（支持通用 OpenAI 兼容接口和火山方舟 Ark）
     AI_PROVIDER: str = DEFAULT_AI_CONFIG["AI_PROVIDER"]
-    AI_BASE_URL: str | None = None
-    AI_API_KEY: str | None = None
-    AI_MODEL: str | None = None
+    AI_BASE_URL: str | None = os.getenv("AI_BASE_URL")
+    AI_API_KEY: str | None = os.getenv("AI_API_KEY")
+    AI_MODEL: str | None = os.getenv("AI_MODEL")
+    ARK_BASE_URL: str | None = os.getenv("ARK_BASE_URL")
+    ARK_API_KEY: str | None = os.getenv("ARK_API_KEY")
+    ARK_MODEL: str | None = os.getenv("ARK_MODEL")
+    AI_SHORT_MEMORY_TURNS: int = 12       # AI 对话短期记忆保留的轮数
+    AI_LONG_MEMORY_FACT_LIMIT: int = 200  # AI 对话长期记忆最大事实条数
 
     VOLCENGINE_ACCESS_KEY_ID: str | None = os.getenv("VOLCENGINE_ACCESS_KEY_ID")
     VOLCENGINE_SECRET_ACCESS_KEY: str | None = os.getenv("VOLCENGINE_SECRET_ACCESS_KEY")

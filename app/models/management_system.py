@@ -36,6 +36,10 @@ class ManagementSystem(Base):
         back_populates="management_system",
         cascade="all, delete-orphan",
     )
+    records: Mapped[list["ManagementSystemRecord"]] = relationship(
+        "ManagementSystemRecord",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         """

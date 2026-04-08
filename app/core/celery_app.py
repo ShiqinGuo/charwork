@@ -1,3 +1,10 @@
+"""
+Celery 异步任务队列配置模块。
+
+基于 Redis 作为消息代理和结果后端，统一使用 JSON 序列化格式，
+确保不同语言/服务端消费任务结果时协议一致。
+"""
+
 from celery import Celery
 from app.core.config import settings
 

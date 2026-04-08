@@ -18,6 +18,7 @@ class CustomFieldType(str, Enum):
     DATE = "date"
     SELECT = "select"
     JSON = "json"
+    FILE = "file"
 
 
 class ManagementSystemCustomFieldBase(BaseModel):

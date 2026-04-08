@@ -7,18 +7,27 @@ import logging
 from typing import Optional
 
 import pandas as pd
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.hanzi import Hanzi
 from app.models.hanzi_dictionary import HanziDataset
 from app.repositories.hanzi_dictionary_repo import HanziDatasetRepository, HanziDictionaryRepository
+from app.schemas.hanzi import HanziCreate, HanziResponse
 from app.schemas.hanzi_dictionary import (
+    HanziDatasetAppendItemsRequest,
+    HanziDatasetAppendItemsResponse,
     HanziDatasetCreate,
+    HanziDatasetCreateHanziResponse,
+    HanziDatasetDetailResponse,
+    HanziDatasetItemsListResponse,
     HanziDatasetListResponse,
     HanziDatasetResponse,
     HanziDictionaryListResponse,
     HanziDictionaryResponse,
     HanziDictionaryInitResponse,
 )
+from app.services.hanzi_service import HanziService
 from app.services.hanzi_dictionary_search_service import HanziDictionarySearchService
 from app.utils.pagination import build_paged_response
 from app.utils.hanzi_dictionary_parser import (
@@ -132,7 +141,7 @@ class HanziDictionaryService:
     async def initialize_from_strokes(self, file_path: str, force: bool = False) -> HanziDictionaryInitResponse:
         """
         功能描述：
-            初始化fromstrokes。
+            初始化，从笔画文件加载字典条目。
 
         参数：
             file_path (str): 文件或资源路径。
@@ -208,19 +217,7 @@ class HanziDictionaryService:
         total = await self.dataset_repo.count_all(management_system_id)
         data = []
         for item in items:
-            data.append(
-                HanziDatasetResponse(
-                    id=item.id,
-                    management_system_id=item.management_system_id,
-                    name=item.name,
-                    level=item.level,
-                    batch_no=item.batch_no,
-                    created_by_user_id=item.created_by_user_id,
-                    dictionary_count=await self.dataset_repo.count_items(item.id),
-                    created_at=item.created_at,
-                    updated_at=item.updated_at,
-                )
-            )
+            data.append(await self._build_dataset_response(item))
         payload = build_paged_response(
             items=data,
             total=total,
@@ -255,9 +252,98 @@ class HanziDictionaryService:
                 created_by_user_id=created_by_user_id,
             )
         )
-        if body.dictionary_ids:
-            await self.dataset_repo.replace_items(dataset.id, body.dictionary_ids)
-        count = await self.dataset_repo.count_items(dataset.id)
+        if body.hanzi_ids:
+            total = await self._count_accessible_hanzi(body.hanzi_ids, management_system_id)
+            if total != len(set(body.hanzi_ids)):
+                raise ValueError("数据集中包含无效或越权的手写体记录")
+            await self.dataset_repo.replace_items(dataset.id, list(dict.fromkeys(body.hanzi_ids)))
+        return await self._build_dataset_response(dataset)
+
+    async def get_dataset(self, dataset_id: str, management_system_id: str) -> HanziDatasetDetailResponse:
+        dataset = await self._get_dataset_entity(dataset_id, management_system_id)
+        payload = await self._build_dataset_response(dataset)
+        return HanziDatasetDetailResponse(**payload.model_dump())
+
+    async def list_dataset_items(
+        self,
+        dataset_id: str,
+        management_system_id: str,
+        skip: int,
+        limit: int,
+        page: Optional[int] = None,
+        size: Optional[int] = None,
+    ) -> HanziDatasetItemsListResponse:
+        await self._get_dataset_entity(dataset_id, management_system_id)
+        items = await self.dataset_repo.list_items(
+            dataset_id=dataset_id,
+            management_system_id=management_system_id,
+            skip=skip,
+            limit=limit,
+        )
+        total = await self.dataset_repo.count_items_in_scope(dataset_id, management_system_id)
+        payload = build_paged_response(
+            items=[self._to_hanzi_response(item) for item in items],
+            total=total,
+            pagination={"page": page, "size": size, "skip": skip, "limit": limit},
+        )
+        return HanziDatasetItemsListResponse(**payload)
+
+    async def append_dataset_items(
+        self,
+        dataset_id: str,
+        management_system_id: str,
+        body: HanziDatasetAppendItemsRequest,
+    ) -> HanziDatasetAppendItemsResponse:
+        dataset = await self._get_dataset_entity(dataset_id, management_system_id)
+        unique_ids = list(dict.fromkeys(body.hanzi_ids))
+        if unique_ids:
+            total = await self._count_accessible_hanzi(unique_ids, management_system_id)
+            if total != len(unique_ids):
+                raise ValueError("数据集中包含无效或越权的手写体记录")
+        appended_count = await self.dataset_repo.append_items(dataset_id, unique_ids)
+        total_items = await self.dataset_repo.count_items_in_scope(dataset_id, management_system_id)
+        dataset_payload = await self._build_dataset_response(dataset)
+        return HanziDatasetAppendItemsResponse(
+            dataset=dataset_payload,
+            appended_count=appended_count,
+            total_items=total_items,
+        )
+
+    async def create_hanzi_in_dataset(
+        self,
+        dataset_id: str,
+        management_system_id: str,
+        hanzi_in: HanziCreate,
+    ) -> HanziDatasetCreateHanziResponse:
+        dataset = await self._get_dataset_entity(dataset_id, management_system_id)
+        hanzi_service = HanziService(self.db)
+        hanzi = await hanzi_service.create_hanzi(hanzi_in, management_system_id)
+        await self.dataset_repo.append_items(dataset_id, [hanzi.id])
+        dataset_payload = await self._build_dataset_response(dataset)
+        return HanziDatasetCreateHanziResponse(dataset=dataset_payload, hanzi=hanzi)
+
+    async def delete_dataset(self, dataset_id: str, management_system_id: str) -> None:
+        await self._get_dataset_entity(dataset_id, management_system_id)
+        await self.dataset_repo.delete_dataset(dataset_id)
+
+    async def _count_accessible_hanzi(self, hanzi_ids: list[str], management_system_id: str) -> int:
+        if not hanzi_ids:
+            return 0
+        result = await self.db.execute(
+            select(func.count())
+            .select_from(Hanzi)
+            .where(Hanzi.id.in_(hanzi_ids), Hanzi.management_system_id == management_system_id)
+        )
+        return int(result.scalar() or 0)
+
+    async def _get_dataset_entity(self, dataset_id: str, management_system_id: str) -> HanziDataset:
+        dataset = await self.dataset_repo.get(dataset_id, management_system_id)
+        if not dataset:
+            raise ValueError("数据集不存在")
+        return dataset
+
+    async def _build_dataset_response(self, dataset: HanziDataset) -> HanziDatasetResponse:
+        count = await self.dataset_repo.count_items_in_scope(dataset.id, dataset.management_system_id)
         return HanziDatasetResponse(
             id=dataset.id,
             management_system_id=dataset.management_system_id,
@@ -265,9 +351,33 @@ class HanziDictionaryService:
             level=dataset.level,
             batch_no=dataset.batch_no,
             created_by_user_id=dataset.created_by_user_id,
-            dictionary_count=count,
+            hanzi_count=count,
             created_at=dataset.created_at,
             updated_at=dataset.updated_at,
+        )
+
+    @staticmethod
+    def _to_hanzi_response(item: Hanzi) -> HanziResponse:
+        return HanziResponse(
+            id=item.id,
+            dictionary_id=item.dictionary_id,
+            character=item.character,
+            char=item.character,
+            image_path=item.image_path,
+            stroke_count=item.stroke_count,
+            structure=item.structure,
+            stroke_order=item.stroke_order,
+            stroke_pattern=item.stroke_pattern,
+            stroke_units=split_stroke_pattern(item.stroke_pattern),
+            pinyin=item.pinyin,
+            source=item.source,
+            level=item.level,
+            comment=item.comment,
+            variant=item.variant,
+            standard_image=item.standard_image,
+            management_system_id=item.management_system_id,
+            created_at=item.created_at.isoformat() if item.created_at else None,
+            updated_at=item.updated_at.isoformat() if item.updated_at else None,
         )
 
     @staticmethod

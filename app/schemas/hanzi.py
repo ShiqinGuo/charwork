@@ -1,5 +1,5 @@
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from enum import Enum
 
 
@@ -26,12 +26,15 @@ class LevelType(str, Enum):
 
 
 class HanziBase(BaseModel):
+    dictionary_id: Optional[str] = None
     character: str
     image_path: Optional[str] = None
     stroke_count: Optional[int] = None
     structure: Optional[StructureType] = StructureType.UNKNOWN
     stroke_order: Optional[str] = None
+    stroke_pattern: Optional[str] = None
     pinyin: Optional[str] = None
+    source: Optional[str] = None
     level: Optional[LevelType] = LevelType.A
     comment: Optional[str] = None
     variant: Optional[VariantType] = VariantType.SIMPLIFIED
@@ -64,13 +67,16 @@ class HanziCreate(HanziBase):
 
 
 class HanziUpdate(BaseModel):
+    dictionary_id: Optional[str] = None
     character: Optional[str] = None
     char: Optional[str] = None
     image_path: Optional[str] = None
     stroke_count: Optional[int] = None
     structure: Optional[StructureType] = None
     stroke_order: Optional[str] = None
+    stroke_pattern: Optional[str] = None
     pinyin: Optional[str] = None
+    source: Optional[str] = None
     level: Optional[LevelType] = None
     comment: Optional[str] = None
     variant: Optional[VariantType] = None
@@ -101,6 +107,7 @@ class HanziUpdate(BaseModel):
 class HanziResponse(HanziBase):
     id: str
     char: str
+    stroke_units: list[str] = Field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -115,3 +122,30 @@ class HanziListResponse(BaseModel):
     skip: Optional[int] = None
     limit: Optional[int] = None
     has_more: Optional[bool] = None
+
+
+class OCRDictionaryCandidate(BaseModel):
+    id: str
+    character: str
+    pinyin: Optional[str] = None
+    stroke_count: Optional[int] = None
+    stroke_pattern: Optional[str] = None
+    source: Optional[str] = None
+
+
+class HanziOCRPrefillResponse(BaseModel):
+    recognized_text: str
+    draft: HanziCreate
+    candidates: list[OCRDictionaryCandidate] = Field(default_factory=list)
+
+
+class HanziOCRBatchPrefillItem(BaseModel):
+    file_name: str
+    recognized_text: str
+    draft: HanziCreate
+    candidates: list[OCRDictionaryCandidate] = Field(default_factory=list)
+
+
+class HanziOCRBatchPrefillResponse(BaseModel):
+    total: int
+    items: list[HanziOCRBatchPrefillItem]

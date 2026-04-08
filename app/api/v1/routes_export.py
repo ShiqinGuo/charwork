@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.management_scope import ManagementScope, get_management_scope
 from app.schemas.import_export import ExportRequest
 from app.services.export_service import ExportService
 
@@ -10,7 +11,11 @@ router = APIRouter()
 
 
 @router.post("/hanzi")
-async def export_hanzi(req: ExportRequest, db: AsyncSession = Depends(get_db)):
+async def export_hanzi(
+    req: ExportRequest,
+    scope: ManagementScope = Depends(get_management_scope),
+    db: AsyncSession = Depends(get_db),
+):
     """
     功能描述：
         导出汉字。
@@ -26,12 +31,34 @@ async def export_hanzi(req: ExportRequest, db: AsyncSession = Depends(get_db)):
     try:
         result = await service.export_hanzi_to_excel(
             fields=req.fields,
+            character=req.character,
+            pinyin=req.pinyin,
+            stroke_count=req.stroke_count,
+            stroke_pattern=req.stroke_pattern,
+            dataset_id=req.dataset_id,
+            source=req.source,
             structure=req.structure,
             level=req.level,
             variant=req.variant,
             search=req.search,
+            management_system_id=scope.management_system_id,
         )
         return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"导出失败：{str(e)}")
+
+
+@router.post("/hanzi-datasets/{dataset_id}")
+async def export_hanzi_dataset(
+    dataset_id: str,
+    scope: ManagementScope = Depends(get_management_scope),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ExportService(db)
+    try:
+        return await service.export_dataset_package(dataset_id, scope.management_system_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

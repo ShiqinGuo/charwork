@@ -21,6 +21,7 @@ class CustomFieldType(str, PyEnum):
     DATE = "date"
     SELECT = "select"
     JSON = "json"
+    FILE = "file"
 
 
 class ManagementSystemCustomField(Base):

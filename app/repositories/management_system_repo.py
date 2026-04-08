@@ -44,28 +44,7 @@ class ManagementSystemRepository:
         return result.scalars().first()
 
     async def get_accessible(self, id: str, user_id: str) -> Optional[ManagementSystem]:
-        """
-        功能描述：
-            按条件获取accessible。
-
-        参数：
-            id (str): 目标记录ID。
-            user_id (str): 用户ID。
-
-        返回值：
-            Optional[ManagementSystem]: 返回查询到的结果对象；未命中时返回 None。
-        """
-        result = await self.db.execute(
-            select(ManagementSystem)
-            # 通过关联表约束“可访问”语义，避免误把系统拥有关系与可见关系混为一类条件。
-            .join(UserManagementSystem, UserManagementSystem.management_system_id == ManagementSystem.id)
-            .where(ManagementSystem.id == id, UserManagementSystem.user_id == user_id)
-            .options(
-                selectinload(ManagementSystem.owner_user).selectinload(User.teacher_profile),
-                selectinload(ManagementSystem.owner_user).selectinload(User.student_profile),
-            )
-        )
-        return result.scalars().first()
+        return await self.get_owned(id, user_id)
 
     async def get_owned(self, id: str, user_id: str) -> Optional[ManagementSystem]:
         """
@@ -90,27 +69,13 @@ class ManagementSystemRepository:
         return result.scalars().first()
 
     async def list_accessible(self, user_id: str, skip: int = 0, limit: int = 20) -> list[ManagementSystem]:
-        """
-        功能描述：
-            按条件查询accessible列表。
-
-        参数：
-            user_id (str): 用户ID。
-            skip (int): 分页偏移量。
-            limit (int): 单次查询的最大返回数量。
-
-        返回值：
-            list[ManagementSystem]: 返回列表形式的结果数据。
-        """
         result = await self.db.execute(
             select(ManagementSystem)
-            .join(UserManagementSystem, UserManagementSystem.management_system_id == ManagementSystem.id)
-            .where(UserManagementSystem.user_id == user_id)
+            .where(ManagementSystem.owner_user_id == user_id)
             .options(
                 selectinload(ManagementSystem.owner_user).selectinload(User.teacher_profile),
                 selectinload(ManagementSystem.owner_user).selectinload(User.student_profile),
             )
-            # 默认系统优先保证前端入口稳定，其次按更新时间倒序让“最近使用”更靠前。
             .order_by(ManagementSystem.is_default.desc(), ManagementSystem.updated_at.desc())
             .offset(skip)
             .limit(limit)
@@ -118,18 +83,8 @@ class ManagementSystemRepository:
         return result.scalars().all()
 
     async def count_accessible(self, user_id: str) -> int:
-        """
-        功能描述：
-            统计accessible数量。
-
-        参数：
-            user_id (str): 用户ID。
-
-        返回值：
-            int: 返回统计结果。
-        """
         result = await self.db.execute(
-            select(func.count()).select_from(UserManagementSystem).where(UserManagementSystem.user_id == user_id)
+            select(func.count()).select_from(ManagementSystem).where(ManagementSystem.owner_user_id == user_id)
         )
         return int(result.scalar() or 0)
 
@@ -258,6 +213,10 @@ class ManagementSystemRepository:
         self.db.add(link)
         await self.db.flush()
         return link
+
+    async def delete_system(self, system: ManagementSystem) -> None:
+        await self.db.delete(system)
+        await self.db.flush()
 
     async def save(self) -> None:
         """

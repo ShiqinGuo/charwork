@@ -6,3 +6,5 @@ migrations/
 charwork.egg-info/
 __pycache__/
 test*.py
+CLAUDE.md
+.claude/

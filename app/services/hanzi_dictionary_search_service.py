@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from elasticsearch import NotFoundError
+from elasticsearch.helpers import async_bulk
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 class HanziDictionarySearchService:
+    REINDEX_BULK_CHUNK_SIZE = 500
+
     def __init__(self, db: AsyncSession):
         """
         功能描述：
@@ -113,8 +116,7 @@ class HanziDictionarySearchService:
                 pass
         await self.ensure_index()
         items = (await self.db.execute(select(HanziDictionary))).scalars().all()
-        for item in items:
-            await self.index_document(item, refresh=False)
+        await self._bulk_index_documents(items)
         await self.es.indices.refresh(index=self.index_name)
         return len(items)
 
@@ -135,6 +137,35 @@ class HanziDictionarySearchService:
             id=self._document_id(item.id),
             document=self._build_document(item),
             refresh=refresh,
+        )
+
+    async def _bulk_index_documents(self, items: list[HanziDictionary]) -> None:
+        """
+        功能描述：
+            批量写入共享字典文档。
+
+        参数：
+            items (list[HanziDictionary]): 需要批量写入的字典实体列表。
+
+        返回值：
+            None: 无返回值。
+        """
+        if not items:
+            return
+        actions = (
+            {
+                "_op_type": "index",
+                "_index": self.index_name,
+                "_id": self._document_id(item.id),
+                "_source": self._build_document(item),
+            }
+            for item in items
+        )
+        await async_bulk(
+            self.es,
+            actions,
+            chunk_size=self.REINDEX_BULK_CHUNK_SIZE,
+            refresh=False,
         )
 
     async def delete_document(self, dictionary_id: str, refresh: bool = False) -> None:

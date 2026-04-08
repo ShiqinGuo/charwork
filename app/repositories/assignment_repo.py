@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 from sqlalchemy import select, func, and_
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.assignment import Assignment, AssignmentStatus
 from app.schemas.assignment import AssignmentCreate, AssignmentUpdate
@@ -32,7 +33,7 @@ class AssignmentRepository:
         返回值：
             Optional[Assignment]: 返回处理结果对象；无可用结果时返回 None。
         """
-        query = select(Assignment).where(Assignment.id == id)
+        query = select(Assignment).where(Assignment.id == id).options(joinedload(Assignment.course))
         if management_system_id:
             query = query.where(Assignment.management_system_id == management_system_id)
         result = await self.db.execute(query)
@@ -60,7 +61,7 @@ class AssignmentRepository:
         返回值：
             List[Assignment]: 返回查询到的结果对象。
         """
-        query = select(Assignment)
+        query = select(Assignment).options(joinedload(Assignment.course))
         if management_system_id:
             query = query.where(Assignment.management_system_id == management_system_id)
         if course_id:

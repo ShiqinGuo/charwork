@@ -1,3 +1,11 @@
+"""
+认证依赖注入模块。
+
+为 FastAPI 路由提供当前用户身份解析的 Depends 依赖，包括：
+- 通用用户鉴权（get_current_user）
+- 按角色鉴权（get_current_teacher / get_current_student / get_current_admin）
+"""
+
 from fastapi import Depends, Header, HTTPException
 from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,13 +22,16 @@ from app.repositories.teacher_repo import TeacherRepository
 def extract_bearer_token(authorization: str | None) -> str:
     """
     功能描述：
-        提取bearer令牌。
+        从 Authorization 请求头中提取 Bearer 令牌字符串。
 
     参数：
-        authorization (str | None): 字符串结果。
+        authorization (str | None): 原始 Authorization 头部值，形如 "Bearer <token>"。
 
     返回值：
-        str: 返回str类型的处理结果。
+        str: 提取出的令牌字符串。
+
+    异常：
+        HTTPException(401): 缺少或格式错误时抛出。
     """
     if not authorization:
         raise HTTPException(status_code=401, detail="缺少 Authorization")
@@ -36,13 +47,13 @@ async def get_current_token(
 ) -> str:
     """
     功能描述：
-        按条件获取当前令牌。
+        FastAPI 依赖：从请求头解析并返回 Bearer 令牌，供下游鉴权使用。
 
     参数：
-        authorization (str | None): 字符串结果。
+        authorization (str | None): HTTP Authorization 请求头。
 
     返回值：
-        str: 返回查询到的结果对象。
+        str: 令牌字符串。
     """
     return extract_bearer_token(authorization)
 
@@ -52,13 +63,19 @@ async def get_current_user(
 ) -> SessionUser:
     """
     功能描述：
-        按条件获取当前用户。
+        FastAPI 依赖：通过令牌从 Redis 会话中获取当前登录用户信息，
+        同时自动续期会话，并校验用户是否被禁用。
 
     参数：
-        token (str): 令牌字符串。
+        token (str): Bearer 令牌字符串。
 
     返回值：
-        SessionUser: 返回查询到的结果对象。
+        SessionUser: 当前登录用户的会话信息。
+
+    异常：
+        HTTPException(401): 会话已过期或无效。
+        HTTPException(403): 用户已被禁用。
+        HTTPException(503): Redis 服务不可用。
     """
     try:
         # 鉴权阶段统一续期，减少高频接口下会话被动过期导致的重复登录。
@@ -78,14 +95,18 @@ async def get_current_teacher(
 ) -> Teacher:
     """
     功能描述：
-        按条件获取当前教师。
+        FastAPI 依赖：校验当前用户为教师角色，并从数据库查询对应的教师档案。
 
     参数：
         current_user (SessionUser): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
-        Teacher: 返回查询到的结果对象。
+        Teacher: 教师实体对象。
+
+    异常：
+        HTTPException(403): 非教师角色。
+        HTTPException(404): 教师档案不存在。
     """
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="仅教师可执行该操作")
@@ -102,13 +123,16 @@ async def get_current_admin(
 ) -> SessionUser:
     """
     功能描述：
-        按条件获取当前admin。
+        FastAPI 依赖：校验当前用户为管理员角色。
 
     参数：
         current_user (SessionUser): 当前登录用户对象。
 
     返回值：
-        SessionUser: 返回查询到的结果对象。
+        SessionUser: 管理员用户的会话信息。
+
+    异常：
+        HTTPException(403): 非管理员角色。
     """
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="仅管理员可执行该操作")
@@ -121,14 +145,18 @@ async def get_current_student(
 ) -> Student:
     """
     功能描述：
-        按条件获取当前学生。
+        FastAPI 依赖：校验当前用户为学生角色，并从数据库查询对应的学生档案。
 
     参数：
         current_user (SessionUser): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
-        Student: 返回查询到的结果对象。
+        Student: 学生实体对象。
+
+    异常：
+        HTTPException(403): 非学生角色。
+        HTTPException(404): 学生档案不存在。
     """
     if current_user.role != UserRole.STUDENT:
         raise HTTPException(status_code=403, detail="仅学生可执行该操作")

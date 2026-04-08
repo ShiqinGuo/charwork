@@ -3,27 +3,38 @@
 特殊逻辑：笔画能力从全局 stroke_service 读取，避免每次请求重复加载笔画源数据。
 """
 
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Optional
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.repositories.hanzi_repo import HanziRepository
-from app.schemas.hanzi import HanziCreate, HanziUpdate, HanziResponse, HanziListResponse
+from app.repositories.hanzi_dictionary_repo import HanziDictionaryRepository
+from fastapi import UploadFile
+
+from app.schemas.hanzi import (
+    HanziCreate,
+    HanziListResponse,
+    HanziOCRBatchPrefillItem,
+    HanziOCRBatchPrefillResponse,
+    HanziOCRPrefillResponse,
+    HanziResponse,
+    HanziUpdate,
+    OCRDictionaryCandidate,
+)
 from app.core.app_state import stroke_service
+from app.services.ocr_service import OCRService
 from app.utils.pagination import build_paged_response
+from app.utils.hanzi_dictionary_parser import split_stroke_pattern
 
 
 class HanziService:
     def __init__(self, db: AsyncSession):
-        """
-        功能描述：
-            初始化HanziService并准备运行所需的依赖对象。
-
-        参数：
-            db (AsyncSession): 数据库会话，用于执行持久化操作。
-
-        返回值：
-            None: 无返回值。
-        """
+        self.db = db
         self.repo = HanziRepository(db)
+        self.dictionary_repo = HanziDictionaryRepository(db)
+        self.ocr_service = OCRService()
 
     async def get_hanzi(self, id: str, management_system_id: str) -> Optional[HanziResponse]:
         """
@@ -64,29 +75,43 @@ class HanziService:
                          level: Optional[str] = None,
                          variant: Optional[str] = None,
                          search: Optional[str] = None,
+                         character: Optional[str] = None,
+                         pinyin: Optional[str] = None,
+                         stroke_count: Optional[int] = None,
+                         stroke_pattern: Optional[str] = None,
+                         dataset_id: Optional[str] = None,
+                         source: Optional[str] = None,
                          management_system_id: Optional[str] = None,
                          page: Optional[int] = None,
                          size: Optional[int] = None) -> HanziListResponse:
-        """
-        功能描述：
-            按条件查询汉字列表。
-
-        参数：
-            skip (int): 分页偏移量。
-            limit (int): 单次查询的最大返回数量。
-            structure (Optional[str]): 字符串结果。
-            level (Optional[str]): 字符串结果。
-            variant (Optional[str]): 字符串结果。
-            search (Optional[str]): 字符串结果。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
-            page (Optional[int]): 当前页码。
-            size (Optional[int]): 每页条数。
-
-        返回值：
-            HanziListResponse: 返回列表或分页查询结果。
-        """
-        items = await self.repo.get_all(skip, limit, structure, level, variant, search, management_system_id)
-        total = await self.repo.count(structure, level, variant, search, management_system_id)
+        items = await self.repo.get_all(
+            skip=skip,
+            limit=limit,
+            structure=structure,
+            level=level,
+            variant=variant,
+            search=search,
+            management_system_id=management_system_id,
+            character=character,
+            pinyin=pinyin,
+            stroke_count=stroke_count,
+            stroke_pattern=stroke_pattern,
+            dataset_id=dataset_id,
+            source=source,
+        )
+        total = await self.repo.count(
+            structure=structure,
+            level=level,
+            variant=variant,
+            search=search,
+            management_system_id=management_system_id,
+            character=character,
+            pinyin=pinyin,
+            stroke_count=stroke_count,
+            stroke_pattern=stroke_pattern,
+            dataset_id=dataset_id,
+            source=source,
+        )
         payload = build_paged_response(
             items=[self._to_response(item) for item in items],
             total=total,
@@ -95,38 +120,17 @@ class HanziService:
         return HanziListResponse(**payload)
 
     async def create_hanzi(self, hanzi_in: HanziCreate, management_system_id: str) -> HanziResponse:
-        """
-        功能描述：
-            创建汉字并返回结果。
-
-        参数：
-            hanzi_in (HanziCreate): 汉字输入对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
-        返回值：
-            HanziResponse: 返回创建后的结果对象。
-        """
-        hanzi = await self.repo.create(hanzi_in, management_system_id)
+        prepared = await self._prepare_payload(hanzi_in)
+        hanzi = await self.repo.create(prepared, management_system_id)
         return self._to_response(hanzi)
 
     async def update_hanzi(self, id: str, hanzi_in: HanziUpdate, management_system_id: str) -> Optional[HanziResponse]:
-        """
-        功能描述：
-            更新汉字并返回最新结果。
-
-        参数：
-            id (str): 目标记录ID。
-            hanzi_in (HanziUpdate): 汉字输入对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
-        返回值：
-            Optional[HanziResponse]: 返回更新后的结果对象；未命中时返回 None。
-        """
         hanzi = await self.repo.get(id, management_system_id)
         if not hanzi:
             return None
 
-        updated_hanzi = await self.repo.update(hanzi, hanzi_in)
+        prepared = await self._prepare_payload(hanzi_in)
+        updated_hanzi = await self.repo.update(hanzi, prepared)
         return self._to_response(updated_hanzi)
 
     async def delete_hanzi(self, id: str, management_system_id: str) -> bool:
@@ -149,16 +153,6 @@ class HanziService:
         return True
 
     def get_strokes(self, ch: str) -> dict:
-        """
-        功能描述：
-            按条件获取strokes。
-
-        参数：
-            ch (str): 字符串结果。
-
-        返回值：
-            dict: 返回字典形式的结果数据。
-        """
         return {
             "character": ch,
             "stroke_count": stroke_service.get_stroke_count(ch),
@@ -174,21 +168,6 @@ class HanziService:
         page: Optional[int] = None,
         size: Optional[int] = None,
     ) -> HanziListResponse:
-        """
-        功能描述：
-            检索by笔画order。
-
-        参数：
-            stroke_pattern (str): 字符串结果。
-            skip (int): 分页偏移量。
-            limit (int): 单次查询的最大返回数量。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
-            page (Optional[int]): 当前页码。
-            size (Optional[int]): 每页条数。
-
-        返回值：
-            HanziListResponse: 返回检索结果。
-        """
         items = await self.repo.search_by_stroke_order(stroke_pattern, skip, limit, management_system_id)
         payload = build_paged_response(
             items=[self._to_response(item) for item in items],
@@ -197,27 +176,117 @@ class HanziService:
         )
         return HanziListResponse(**payload)
 
+    async def build_prefill_by_upload(self, file: UploadFile) -> HanziOCRPrefillResponse:
+        file_path = await self._save_upload_file(file)
+        try:
+            recognized = await self.ocr_service.recognize_image(file_path)
+            recognized_text = self._normalize_recognized_text(recognized)
+            return await self._build_prefill_by_character(recognized_text)
+        finally:
+            Path(file_path).unlink(missing_ok=True)
+
+    async def build_batch_prefill_by_uploads(self, files: list[UploadFile]) -> HanziOCRBatchPrefillResponse:
+        items: list[HanziOCRBatchPrefillItem] = []
+        for file in files:
+            file_path = await self._save_upload_file(file)
+            try:
+                recognized = await self.ocr_service.recognize_image(file_path)
+                recognized_text = self._normalize_recognized_text(recognized)
+                prefill = await self._build_prefill_by_character(recognized_text)
+                items.append(
+                    HanziOCRBatchPrefillItem(
+                        file_name=file.filename or Path(file_path).name,
+                        recognized_text=recognized_text,
+                        draft=prefill.draft,
+                        candidates=prefill.candidates,
+                    )
+                )
+            finally:
+                Path(file_path).unlink(missing_ok=True)
+        return HanziOCRBatchPrefillResponse(total=len(items), items=items)
+
+    async def _prepare_payload(self, payload_model: HanziCreate | HanziUpdate) -> HanziCreate | HanziUpdate:
+        payload = payload_model.model_dump(exclude_unset=True)
+        dictionary_id = payload.get("dictionary_id")
+        if dictionary_id:
+            dictionary_item = await self.dictionary_repo.get(dictionary_id)
+            if not dictionary_item:
+                raise ValueError("关联的共享字典条目不存在")
+            payload["character"] = payload.get("character") or dictionary_item.character
+            payload["pinyin"] = payload.get("pinyin") or dictionary_item.pinyin
+            payload["stroke_count"] = payload.get("stroke_count") or dictionary_item.stroke_count
+            payload["stroke_pattern"] = payload.get("stroke_pattern") or dictionary_item.stroke_pattern
+            payload["source"] = payload.get("source") or dictionary_item.source
+            payload["stroke_order"] = payload.get(
+                "stroke_order") or stroke_service.get_stroke_order(dictionary_item.character)
+        elif payload.get("character") and not payload.get("stroke_order"):
+            payload["stroke_order"] = stroke_service.get_stroke_order(payload["character"])
+        if isinstance(payload_model, HanziCreate):
+            return HanziCreate(**payload)
+        return HanziUpdate(**payload)
+
+    async def _build_prefill_by_character(self, character: str) -> HanziOCRPrefillResponse:
+        candidates = await self.dictionary_repo.list_candidates_by_character(character, limit=5)
+        selected = candidates[0] if candidates else None
+        draft = HanziCreate(
+            dictionary_id=selected.id if selected else None,
+            character=character,
+            pinyin=selected.pinyin if selected else None,
+            stroke_count=selected.stroke_count if selected else None,
+            stroke_pattern=selected.stroke_pattern if selected else None,
+            source=selected.source if selected else "ocr",
+            stroke_order=stroke_service.get_stroke_order(character),
+        )
+        return HanziOCRPrefillResponse(
+            recognized_text=character,
+            draft=draft,
+            candidates=[
+                OCRDictionaryCandidate(
+                    id=item.id,
+                    character=item.character,
+                    pinyin=item.pinyin,
+                    stroke_count=item.stroke_count,
+                    stroke_pattern=item.stroke_pattern,
+                    source=item.source,
+                )
+                for item in candidates
+            ],
+        )
+
+    @staticmethod
+    def _normalize_recognized_text(recognized: str | list[str]) -> str:
+        if isinstance(recognized, list):
+            text = "".join(recognized).strip()
+        else:
+            text = recognized.strip()
+        if not text:
+            raise ValueError("OCR 未识别到有效汉字")
+        return text[0]
+
+    @staticmethod
+    async def _save_upload_file(file: UploadFile) -> str:
+        file.file.seek(0)
+        suffix = Path(file.filename or "upload.png").suffix or ".png"
+        with NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+            content = await file.read()
+            temp_file.write(content)
+            return temp_file.name
+
     @staticmethod
     def _to_response(item) -> HanziResponse:
-        """
-        功能描述：
-            将输入数据转换为响应。
-
-        参数：
-            item (Any): 当前处理的实体对象。
-
-        返回值：
-            HanziResponse: 返回HanziResponse类型的处理结果。
-        """
         return HanziResponse(
             id=item.id,
+            dictionary_id=item.dictionary_id,
             character=item.character,
             char=item.character,
             image_path=item.image_path,
             stroke_count=item.stroke_count,
             structure=item.structure,
             stroke_order=item.stroke_order,
+            stroke_pattern=item.stroke_pattern,
+            stroke_units=split_stroke_pattern(item.stroke_pattern),
             pinyin=item.pinyin,
+            source=item.source,
             level=item.level,
             comment=item.comment,
             variant=item.variant,

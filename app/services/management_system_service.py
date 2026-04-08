@@ -23,66 +23,64 @@ from app.schemas.management_system import (
 
 DEFAULT_MANAGEMENT_SYSTEM_PRESET_KEY = "builtin_hanzi_default"
 DEFAULT_MANAGEMENT_SYSTEM_NAME = "默认汉字管理系统"
-DEFAULT_MANAGEMENT_SYSTEM_DESCRIPTION = "系统自动初始化的默认汉字教学与管理入口"
+DEFAULT_MANAGEMENT_SYSTEM_DESCRIPTION = "系统自动初始化的默认汉字管理系统，提供简化字段与基础增删改查能力"
 DEFAULT_MANAGEMENT_SYSTEM_TYPE = "hanzi"
-DEFAULT_MODULE_CONFIGS = (
-    {"key": "hanzi", "name": "汉字管理", "enabled": True, "path": "/teacher/characters"},
-    {"key": "assignments", "name": "作业管理", "enabled": True, "path": "/teacher/assignments"},
-    {"key": "students", "name": "学生管理", "enabled": True, "path": "/teacher/students"},
+DEFAULT_HANZI_FIELD_DEFINITIONS = (
+    {"field_key": "character", "name": "汉字", "field_type": "text", "is_required": True, "is_searchable": True, "enabled": True, "options": [], "locked": True},
+    {"field_key": "pinyin", "name": "拼音", "field_type": "text", "is_required": False, "is_searchable": True, "enabled": True, "options": [], "locked": False},
+    {"field_key": "meaning", "name": "释义", "field_type": "text", "is_required": False, "is_searchable": True, "enabled": True, "options": [], "locked": False},
 )
-DEFAULT_NAVIGATION_KEYS = ("hanzi", "assignments", "students")
-DEFAULT_HOME_ENTRY = "hanzi"
-DEFAULT_CUSTOM_FIELD_TARGETS = ("course", "assignment", "student")
+DEFAULT_LOCKED_FIELD_DEFINITIONS = (
+    {
+        "field_key": "create_time",
+        "name": "创建时间",
+        "field_type": "date",
+        "is_required": False,
+        "is_searchable": False,
+        "enabled": True,
+        "locked": True,
+        "options": [],
+    },
+    {
+        "field_key": "update_time",
+        "name": "更新时间",
+        "field_type": "date",
+        "is_required": False,
+        "is_searchable": True,
+        "enabled": True,
+        "locked": True,
+        "options": [],
+    },
+    {
+        "field_key": "is_deleted",
+        "name": "软删除标记",
+        "field_type": "boolean",
+        "is_required": False,
+        "is_searchable": True,
+        "enabled": False,
+        "locked": True,
+        "options": [],
+    },
+)
 DEFAULT_DISPLAY_CONFIG = {
     "title": DEFAULT_MANAGEMENT_SYSTEM_NAME,
     "theme": "default",
 }
 
 
-def _copy_module_configs() -> list[dict[str, object]]:
-    """
-    功能描述：
-        处理moduleconfigs。
-
-    参数：
-        无。
-
-    返回值：
-        list[dict[str, object]]: 返回列表形式的结果数据。
-    """
-    return [dict(module) for module in DEFAULT_MODULE_CONFIGS]
+def _copy_field_definitions(raw_items: tuple[dict[str, object], ...]) -> list[dict[str, object]]:
+    return [dict(item) for item in raw_items]
 
 
-def _build_extensions_config() -> dict[str, dict[str, object]]:
-    """
-    功能描述：
-        构建extensionsconfig。
-
-    参数：
-        无。
-
-    返回值：
-        dict[str, dict[str, object]]: 返回字典形式的结果数据。
-    """
+def _build_list_config(field_keys: list[str]) -> dict[str, object]:
     return {
-        "custom_fields": {
-            "enabled": True,
-            "targets": list(DEFAULT_CUSTOM_FIELD_TARGETS),
-        }
+        "visible_field_keys": field_keys,
+        "default_sort_field": "updated_at",
+        "default_sort_direction": "desc",
     }
 
 
 def _build_display_config(*, builtin: bool) -> dict[str, object]:
-    """
-    功能描述：
-        构建displayconfig。
-
-    参数：
-        builtin (bool): 布尔值结果。
-
-    返回值：
-        dict[str, object]: 返回字典形式的结果数据。
-    """
     return {
         **DEFAULT_DISPLAY_CONFIG,
         "builtin": builtin,
@@ -90,73 +88,103 @@ def _build_display_config(*, builtin: bool) -> dict[str, object]:
 
 
 def build_builtin_hanzi_system_config() -> dict[str, object]:
-    """
-    功能描述：
-        构建builtin汉字系统config。
-
-    参数：
-        无。
-
-    返回值：
-        dict[str, object]: 返回字典形式的结果数据。
-    """
+    base_fields = _copy_field_definitions(DEFAULT_HANZI_FIELD_DEFINITIONS)
+    visible_field_keys = [item["field_key"] for item in base_fields if item.get("enabled")]
     return {
-        "modules": _copy_module_configs(),
-        "navigation": list(DEFAULT_NAVIGATION_KEYS),
-        "home_entry": DEFAULT_HOME_ENTRY,
-        "extensions": _build_extensions_config(),
+        "field_definitions": base_fields,
+        "list_config": _build_list_config(visible_field_keys),
+        "form_config": {"field_keys": visible_field_keys},
+        "import_export": {"allow_import": True, "allow_export": True},
         "display": _build_display_config(builtin=True),
     }
 
 
 def build_custom_system_config() -> dict[str, object]:
-    """
-    功能描述：
-        构建自定义系统config。
-
-    参数：
-        无。
-
-    返回值：
-        dict[str, object]: 返回字典形式的结果数据。
-    """
-    config = build_builtin_hanzi_system_config()
-    config["display"] = _build_display_config(builtin=False)
-    return config
+    custom_fields = _copy_field_definitions(DEFAULT_LOCKED_FIELD_DEFINITIONS)
+    visible_field_keys = [item["field_key"] for item in custom_fields if item.get("enabled")]
+    return {
+        "field_definitions": custom_fields,
+        "list_config": _build_list_config(visible_field_keys),
+        "form_config": {"field_keys": visible_field_keys},
+        "import_export": {"allow_import": True, "allow_export": True},
+        "display": _build_display_config(builtin=False),
+    }
 
 
 def normalize_management_system_config(config: Optional[dict[str, object]]) -> dict[str, object]:
-    """
-    功能描述：
-        处理管理系统config。
-
-    参数：
-        config (Optional[dict[str, object]]): 字典形式的结果数据。
-
-    返回值：
-        dict[str, object]: 返回字典形式的结果数据。
-    """
     normalized = build_custom_system_config()
     incoming = config or {}
-    normalized["modules"] = incoming.get("modules", normalized["modules"])
-    normalized["navigation"] = incoming.get("navigation", normalized["navigation"])
-    normalized["home_entry"] = incoming.get("home_entry", normalized["home_entry"])
     normalized["display"] = {
         **normalized["display"],
         **incoming.get("display", {}),
     }
-    normalized["extensions"] = {
-        **normalized["extensions"],
-        **incoming.get("extensions", {}),
+    normalized["import_export"] = {
+        **normalized["import_export"],
+        **incoming.get("import_export", {}),
     }
-    normalized["extensions"]["custom_fields"] = {
-        **build_custom_system_config()["extensions"]["custom_fields"],
-        **normalized["extensions"].get("custom_fields", {}),
+    normalized["field_definitions"] = _normalize_field_definitions(incoming.get("field_definitions"))
+    visible_defaults = [
+        item["field_key"]
+        for item in normalized["field_definitions"]
+        if item.get("enabled") and item.get("field_key") not in {"is_deleted"}
+    ]
+    normalized["list_config"] = {
+        **normalized["list_config"],
+        **incoming.get("list_config", {}),
     }
+    normalized["form_config"] = {
+        **normalized["form_config"],
+        **incoming.get("form_config", {}),
+    }
+    normalized["list_config"]["visible_field_keys"] = [
+        key for key in normalized["list_config"].get("visible_field_keys", visible_defaults)
+        if key in {item["field_key"] for item in normalized["field_definitions"] if item.get("enabled")}
+    ] or visible_defaults
+    normalized["form_config"]["field_keys"] = [
+        key for key in normalized["form_config"].get("field_keys", visible_defaults)
+        if key in {item["field_key"] for item in normalized["field_definitions"] if item.get("enabled")}
+    ] or visible_defaults
     for key, value in incoming.items():
         if key not in normalized:
             normalized[key] = value
     return normalized
+
+
+def _normalize_field_definitions(raw_field_definitions: object) -> list[dict[str, object]]:
+    raw_items = raw_field_definitions if isinstance(raw_field_definitions, list) else []
+    custom_items = [item for item in raw_items if isinstance(item, dict)]
+    default_by_key = {item["field_key"]: dict(item) for item in DEFAULT_LOCKED_FIELD_DEFINITIONS}
+    custom_by_key = {str(item.get("field_key", "")): dict(item) for item in custom_items if item.get("field_key")}
+
+    for field_key, default_item in default_by_key.items():
+        custom_item = custom_by_key.get(field_key)
+        if not custom_item:
+            custom_by_key[field_key] = default_item
+            continue
+        custom_item["field_type"] = default_item["field_type"]
+        custom_item["locked"] = True
+        custom_item["enabled"] = bool(custom_item.get("enabled", default_item.get("enabled", False)))
+        custom_item["options"] = list(custom_item.get("options", default_item.get("options", [])) or [])
+        custom_by_key[field_key] = custom_item
+
+    ordered_defaults = [custom_by_key[item["field_key"]] for item in DEFAULT_LOCKED_FIELD_DEFINITIONS]
+    ordered_custom = []
+    for key, item in custom_by_key.items():
+        if key in default_by_key:
+            continue
+        ordered_custom.append(
+            {
+                "field_key": str(item.get("field_key", "")),
+                "name": str(item.get("name", "")),
+                "field_type": str(item.get("field_type", "text")),
+                "is_required": bool(item.get("is_required", False)),
+                "is_searchable": bool(item.get("is_searchable", False)),
+                "enabled": bool(item.get("enabled", True)),
+                "options": list(item.get("options", []) or []),
+                "locked": bool(item.get("locked", False)),
+            }
+        )
+    return ordered_defaults + ordered_custom
 
 
 class ManagementSystemService:
@@ -316,6 +344,20 @@ class ManagementSystemService:
         await self.repo.save()
         updated = await self.repo.get(management_system.id)
         return self._to_response(updated, current_user.id)
+
+    async def delete_custom_system(self, management_system_id: str, current_user: User) -> bool:
+        if current_user.role != UserRole.TEACHER:
+            raise PermissionError("仅教师可删除自定义管理系统")
+        management_system = await self.repo.get(management_system_id)
+        if not management_system:
+            return False
+        if management_system.owner_user_id != current_user.id:
+            raise PermissionError("仅可删除本人创建的管理系统")
+        if management_system.is_default:
+            raise ValueError("默认汉字管理系统不支持删除")
+        await self.repo.delete_system(management_system)
+        await self.repo.save()
+        return True
 
     async def ensure_default_system_entity(self, user: User, commit: bool = True) -> ManagementSystem:
         """

@@ -7,6 +7,8 @@ class SearchHit(BaseModel):
     score: float
     title: str
     content: str
+    target_type: str
+    url: str | None = None
 
 
 class CrossSearchResponse(BaseModel):

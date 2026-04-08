@@ -1,15 +1,27 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import os
+import tempfile
+from io import BytesIO
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.management_system import (
+    ManagementSystemExportRequest,
     ManagementSystemCreate,
+    ManagementSystemImportResponse,
     ManagementSystemListResponse,
+    ManagementSystemRecordCreate,
+    ManagementSystemRecordListResponse,
+    ManagementSystemRecordResponse,
+    ManagementSystemRecordUpdate,
     ManagementSystemResponse,
     ManagementSystemUpdate,
 )
+from app.services.management_system_record_service import ManagementSystemRecordService
 from app.services.management_system_service import ManagementSystemService
 
 
@@ -81,6 +93,178 @@ async def get_management_system_detail(
     if not item:
         raise HTTPException(status_code=404, detail="管理系统不存在")
     return item
+
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_management_system(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ManagementSystemService(db)
+    try:
+        deleted = await service.delete_custom_system(id, current_user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="管理系统不存在")
+
+
+@router.get("/{id}/records", response_model=ManagementSystemRecordListResponse)
+async def list_management_system_records(
+    id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=200),
+    keyword: str | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ManagementSystemRecordService(db)
+    try:
+        return await service.list_records(id, current_user, skip, limit, keyword)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/{id}/records/template")
+async def export_management_system_record_template(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ManagementSystemRecordService(db)
+    try:
+        buffer = await service.export_template(id, current_user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=template_{id}.xlsx"},
+    )
+
+
+@router.get("/{id}/records/{record_id}", response_model=ManagementSystemRecordResponse)
+async def get_management_system_record(
+    id: str,
+    record_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ManagementSystemRecordService(db)
+    try:
+        item = await service.get_record(id, record_id, current_user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not item:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    return item
+
+
+@router.post("/{id}/records", response_model=ManagementSystemRecordResponse, status_code=status.HTTP_201_CREATED)
+async def create_management_system_record(
+    id: str,
+    body: ManagementSystemRecordCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ManagementSystemRecordService(db)
+    try:
+        return await service.create_record(id, body, current_user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/{id}/records/{record_id}", response_model=ManagementSystemRecordResponse)
+async def update_management_system_record(
+    id: str,
+    record_id: str,
+    body: ManagementSystemRecordUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ManagementSystemRecordService(db)
+    try:
+        item = await service.update_record(id, record_id, body, current_user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not item:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    return item
+
+
+@router.delete("/{id}/records/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_management_system_record(
+    id: str,
+    record_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ManagementSystemRecordService(db)
+    try:
+        deleted = await service.delete_record(id, record_id, current_user)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="记录不存在")
+
+
+@router.post("/{id}/records/import", response_model=ManagementSystemImportResponse)
+async def import_management_system_records(
+    id: str,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    suffix = os.path.splitext(file.filename or "records.xlsx")[1] or ".xlsx"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_file.write(await file.read())
+        temp_path = temp_file.name
+    service = ManagementSystemRecordService(db)
+    try:
+        return await service.import_records(id, current_user, temp_path)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+
+@router.post("/{id}/records/export")
+async def export_management_system_records(
+    id: str,
+    body: ManagementSystemExportRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ManagementSystemRecordService(db)
+    try:
+        buffer = await service.export_records(id, current_user, body)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=export_{id}.xlsx"},
+    )
 
 
 @router.post("/", response_model=ManagementSystemResponse, status_code=status.HTTP_201_CREATED)

@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
+from app.schemas.hanzi import HanziCreate, HanziResponse
 
 
 class HanziDictionaryInitRequest(BaseModel):
@@ -30,7 +31,15 @@ class HanziDatasetCreate(BaseModel):
     name: str
     level: Optional[str] = None
     batch_no: Optional[str] = None
-    dictionary_ids: list[str] = Field(default_factory=list)
+    hanzi_ids: list[str] = Field(default_factory=list)
+
+
+class HanziDatasetAppendItemsRequest(BaseModel):
+    hanzi_ids: list[str] = Field(default_factory=list)
+
+
+class HanziDatasetCreateHanziRequest(BaseModel):
+    hanzi: HanziCreate
 
 
 class HanziDatasetResponse(BaseModel):
@@ -40,9 +49,34 @@ class HanziDatasetResponse(BaseModel):
     level: Optional[str] = None
     batch_no: Optional[str] = None
     created_by_user_id: str
-    dictionary_count: int = 0
+    hanzi_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+
+class HanziDatasetDetailResponse(HanziDatasetResponse):
+    pass
+
+
+class HanziDatasetItemsListResponse(BaseModel):
+    total: int
+    items: list[HanziResponse]
+    page: Optional[int] = None
+    size: Optional[int] = None
+    skip: Optional[int] = None
+    limit: Optional[int] = None
+    has_more: Optional[bool] = None
+
+
+class HanziDatasetAppendItemsResponse(BaseModel):
+    dataset: HanziDatasetResponse
+    appended_count: int
+    total_items: int
+
+
+class HanziDatasetCreateHanziResponse(BaseModel):
+    dataset: HanziDatasetResponse
+    hanzi: HanziResponse
 
 
 class HanziDatasetListResponse(BaseModel):

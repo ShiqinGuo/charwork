@@ -46,6 +46,7 @@ BOOLEAN_FIELD_TYPE = "boolean"
 DATE_FIELD_TYPE = "date"
 SELECT_FIELD_TYPE = "select"
 JSON_FIELD_TYPE = "json"
+FILE_FIELD_TYPE = "file"
 
 
 @dataclass(slots=True)
@@ -590,6 +591,7 @@ class CustomFieldService:
             DATE_FIELD_TYPE: self._normalize_date_field_value,
             SELECT_FIELD_TYPE: self._normalize_select_field_value,
             JSON_FIELD_TYPE: self._normalize_json_field_value,
+            FILE_FIELD_TYPE: self._normalize_file_field_value,
         }
         return normalizers.get(field_type)
 
@@ -989,6 +991,15 @@ class CustomFieldService:
         if value not in choices:
             raise ValueError(f"字段 {field.name} 取值不在可选项内")
         return value
+
+    @staticmethod
+    def _normalize_file_field_value(field: FieldDefinition, value: Any) -> str:
+        if not isinstance(value, str):
+            raise ValueError(f"字段 {field.name} 必须为文件路径字符串")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError(f"字段 {field.name} 文件路径不能为空")
+        return normalized
 
     @staticmethod
     def _normalize_json_field_value(field: FieldDefinition, value: Any) -> Any:

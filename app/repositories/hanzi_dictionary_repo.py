@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy import case, delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.hanzi import Hanzi
 from app.models.hanzi_dictionary import HanziDataset, HanziDatasetItem, HanziDictionary
 from app.utils.hanzi_dictionary_parser import normalize_pinyin_keyword
 
@@ -109,6 +110,17 @@ class HanziDictionaryRepository:
         """
         result = await self.db.execute(select(HanziDictionary).where(HanziDictionary.character == character))
         return result.scalars().first()
+
+    async def list_candidates_by_character(self, character: str, limit: int = 5) -> list[HanziDictionary]:
+        if not character:
+            return []
+        result = await self.db.execute(
+            select(HanziDictionary)
+            .where(HanziDictionary.character == character)
+            .order_by(HanziDictionary.stroke_count.asc(), HanziDictionary.character.asc())
+            .limit(limit)
+        )
+        return result.scalars().all()
 
     async def get(self, dictionary_id: str) -> Optional[HanziDictionary]:
         """
@@ -369,18 +381,47 @@ class HanziDatasetRepository:
         return int(result.scalar() or 0)
 
     async def count_items(self, dataset_id: str) -> int:
-        """
-        功能描述：
-            统计items数量。
-
-        参数：
-            dataset_id (str): 数据集ID。
-
-        返回值：
-            int: 返回统计结果。
-        """
         result = await self.db.execute(
-            select(func.count()).select_from(HanziDatasetItem).where(HanziDatasetItem.dataset_id == dataset_id)
+            select(func.count())
+            .select_from(HanziDatasetItem)
+            .join(Hanzi, Hanzi.id == HanziDatasetItem.hanzi_id)
+            .where(HanziDatasetItem.dataset_id == dataset_id)
+        )
+        return int(result.scalar() or 0)
+
+    async def list_items(
+        self,
+        dataset_id: str,
+        management_system_id: str,
+        skip: int,
+        limit: int,
+    ) -> list[Hanzi]:
+        result = await self.db.execute(
+            select(Hanzi)
+            .join(HanziDatasetItem, HanziDatasetItem.hanzi_id == Hanzi.id)
+            .join(HanziDataset, HanziDataset.id == HanziDatasetItem.dataset_id)
+            .where(
+                HanziDatasetItem.dataset_id == dataset_id,
+                HanziDataset.management_system_id == management_system_id,
+                Hanzi.management_system_id == management_system_id,
+            )
+            .order_by(Hanzi.updated_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        return result.scalars().all()
+
+    async def count_items_in_scope(self, dataset_id: str, management_system_id: str) -> int:
+        result = await self.db.execute(
+            select(func.count())
+            .select_from(HanziDatasetItem)
+            .join(Hanzi, Hanzi.id == HanziDatasetItem.hanzi_id)
+            .join(HanziDataset, HanziDataset.id == HanziDatasetItem.dataset_id)
+            .where(
+                HanziDatasetItem.dataset_id == dataset_id,
+                HanziDataset.management_system_id == management_system_id,
+                Hanzi.management_system_id == management_system_id,
+            )
         )
         return int(result.scalar() or 0)
 
@@ -400,19 +441,31 @@ class HanziDatasetRepository:
         await self.db.refresh(dataset)
         return dataset
 
-    async def replace_items(self, dataset_id: str, dictionary_ids: list[str]) -> None:
-        """
-        功能描述：
-            处理items。
-
-        参数：
-            dataset_id (str): 数据集ID。
-            dictionary_ids (list[str]): 字典ID列表。
-
-        返回值：
-            None: 无返回值。
-        """
+    async def replace_items(self, dataset_id: str, hanzi_ids: list[str]) -> None:
         await self.db.execute(delete(HanziDatasetItem).where(HanziDatasetItem.dataset_id == dataset_id))
-        for dictionary_id in dictionary_ids:
-            self.db.add(HanziDatasetItem(dataset_id=dataset_id, dictionary_id=dictionary_id))
+        for hanzi_id in hanzi_ids:
+            self.db.add(HanziDatasetItem(dataset_id=dataset_id, hanzi_id=hanzi_id))
+        await self.db.commit()
+
+    async def get_item_hanzi_ids(self, dataset_id: str) -> set[str]:
+        result = await self.db.execute(
+            select(HanziDatasetItem.hanzi_id).where(HanziDatasetItem.dataset_id == dataset_id)
+        )
+        return set(result.scalars().all())
+
+    async def append_items(self, dataset_id: str, hanzi_ids: list[str]) -> int:
+        if not hanzi_ids:
+            return 0
+        existing_ids = await self.get_item_hanzi_ids(dataset_id)
+        append_ids = [hanzi_id for hanzi_id in hanzi_ids if hanzi_id not in existing_ids]
+        if not append_ids:
+            return 0
+        for hanzi_id in append_ids:
+            self.db.add(HanziDatasetItem(dataset_id=dataset_id, hanzi_id=hanzi_id))
+        await self.db.commit()
+        return len(append_ids)
+
+    async def delete_dataset(self, dataset_id: str) -> None:
+        await self.db.execute(delete(HanziDatasetItem).where(HanziDatasetItem.dataset_id == dataset_id))
+        await self.db.execute(delete(HanziDataset).where(HanziDataset.id == dataset_id))
         await self.db.commit()

@@ -260,7 +260,7 @@ class CrossSearchService:
             modules=allowed_modules,
         )
         items = [
-            self._to_search_hit(hit)
+            self._to_search_hit(hit, management_system_id)
             for hit in hits[:limit]
         ]
         return CrossSearchResponse(keyword=keyword, total=len(items), items=items)
@@ -350,8 +350,7 @@ class CrossSearchService:
         """
         return f"{table}_{source_id}"
 
-    @staticmethod
-    def _to_search_hit(hit: dict) -> SearchHit:
+    def _to_search_hit(self, hit: dict, management_system_id: str) -> SearchHit:
         """
         功能描述：
             将输入数据转换为检索hit。
@@ -363,10 +362,25 @@ class CrossSearchService:
             SearchHit: 返回SearchHit类型的处理结果。
         """
         source = hit["_source"]
+        target_type = str(source.get("target_type") or source["module"])
         return SearchHit(
             module=source["module"],
             id=source["source_id"],
             score=float(hit.get("_score") or 0),
             title=source["title"],
             content=source["content"],
+            target_type=target_type,
+            url=self._build_hit_url(source["module"], source["source_id"], management_system_id),
         )
+
+    @staticmethod
+    def _build_hit_url(module: str, source_id: str, management_system_id: str) -> str | None:
+        module_to_path = {
+            "hanzi": f"/management-systems/{management_system_id}/modules/hanzi/{source_id}",
+            "assignment": f"/management-systems/{management_system_id}/modules/assignments/{source_id}",
+            "student": f"/management-systems/{management_system_id}/modules/students/{source_id}",
+            "course": f"/courses/{source_id}",
+            "teaching_class": "/classes",
+            "discussion": "/messages",
+        }
+        return module_to_path.get(module)
