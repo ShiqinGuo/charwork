@@ -5,6 +5,7 @@ from app.models.hanzi_dictionary import HanziDictionary, HanziDataset, HanziData
 from app.models.user import User, UserRole  # noqa
 from app.models.teacher import Teacher  # noqa
 from app.models.student import Student  # noqa
+from app.models.student_class import StudentClass, StudentClassStatus  # noqa
 from app.models.assignment import Assignment, AssignmentStatus  # noqa
 from app.models.ai_chat import AIChatConversation, AIChatMemoryFact, AIChatMessage  # noqa
 from app.models.assignment_attachment_upload import AssignmentAttachmentUpload  # noqa

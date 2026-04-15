@@ -62,6 +62,7 @@ class TeachingClass(Base):
         back_populates="teaching_class",
         cascade="all, delete-orphan",
     )
+    student_classes: Mapped[list["StudentClass"]] = relationship("StudentClass", back_populates="teaching_class")  # noqa
 
     def __repr__(self):
         """

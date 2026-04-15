@@ -19,6 +19,7 @@ class Student(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="student_profile")  # noqa
     submissions: Mapped[list["Submission"]] = relationship("Submission", back_populates="student")  # noqa
+    student_classes: Mapped[list["StudentClass"]] = relationship("StudentClass", back_populates="student")  # noqa
 
     def __repr__(self):
         """
