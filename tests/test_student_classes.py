@@ -799,6 +799,177 @@ if SQLALCHEMY_READY:
 
                 self.assertIn("无权限访问", str(exc.exception))
 
+        async def test_get_ai_feedback(self):
+            """测试查看 AI 反馈"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟 AI 反馈数据
+            ai_feedback_data = {
+                "status": "done",
+                "generated_at": "2026-04-16T10:00:00",
+                "items": [
+                    {
+                        "image_index": 0,
+                        "char": "好",
+                        "stroke_score": 85,
+                    }
+                ]
+            }
+
+            # 模拟提交
+            submission = SimpleNamespace(
+                id="sub-1",
+                student_id="stu-1",
+                submitted_at=datetime(2026, 4, 18, 10, 0, 0),
+                ai_feedback=ai_feedback_data,
+            )
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=submission)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                result = await service.get_ai_feedback("stu-1", "sub-1")
+
+                self.assertEqual(result["id"], "sub-1")
+                self.assertEqual(result["submission_id"], "sub-1")
+                self.assertEqual(result["feedback"], ai_feedback_data)
+                self.assertEqual(result["created_at"], datetime(2026, 4, 18, 10, 0, 0))
+                self.assertEqual(result["model"], "claude")
+
+        async def test_get_ai_feedback_not_found(self):
+            """测试 AI 反馈不存在"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟提交（无 AI 反馈）
+            submission = SimpleNamespace(
+                id="sub-1",
+                student_id="stu-1",
+                ai_feedback=None,
+            )
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=submission)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                with self.assertRaises(ValueError) as exc:
+                    await service.get_ai_feedback("stu-1", "sub-1")
+
+                self.assertIn("反馈不存在", str(exc.exception))
+
+        async def test_get_ai_feedback_unauthorized(self):
+            """测试无权限访问他人的 AI 反馈"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟提交（属于其他学生）
+            submission = SimpleNamespace(
+                id="sub-1",
+                student_id="stu-2",
+            )
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=submission)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                with self.assertRaises(ValueError) as exc:
+                    await service.get_ai_feedback("stu-1", "sub-1")
+
+                self.assertIn("无权限访问", str(exc.exception))
+
+        async def test_get_teacher_feedback(self):
+            """测试查看教师反馈"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟提交
+            submission = SimpleNamespace(
+                id="sub-1",
+                student_id="stu-1",
+                teacher_feedback="很好的作业，继续加油！",
+                score=90,
+                graded_at=datetime(2026, 4, 19, 10, 0, 0),
+            )
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=submission)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                result = await service.get_teacher_feedback("stu-1", "sub-1")
+
+                self.assertEqual(result["id"], "sub-1")
+                self.assertEqual(result["submission_id"], "sub-1")
+                self.assertEqual(result["feedback"], "很好的作业，继续加油！")
+                self.assertEqual(result["score"], 90)
+                self.assertEqual(result["graded_at"], datetime(2026, 4, 19, 10, 0, 0))
+                self.assertIsNone(result["teacher_name"])
+
+        async def test_get_teacher_feedback_not_found(self):
+            """测试教师反馈不存在"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟提交（无教师反馈）
+            submission = SimpleNamespace(
+                id="sub-1",
+                student_id="stu-1",
+                teacher_feedback=None,
+            )
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=submission)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                with self.assertRaises(ValueError) as exc:
+                    await service.get_teacher_feedback("stu-1", "sub-1")
+
+                self.assertIn("反馈不存在", str(exc.exception))
+
+        async def test_get_teacher_feedback_unauthorized(self):
+            """测试无权限访问他人的教师反馈"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟提交（属于其他学生）
+            submission = SimpleNamespace(
+                id="sub-1",
+                student_id="stu-2",
+            )
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=submission)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                with self.assertRaises(ValueError) as exc:
+                    await service.get_teacher_feedback("stu-1", "sub-1")
+
+                self.assertIn("无权限访问", str(exc.exception))
+
 else:
     @unittest.skip("当前环境缺少 sqlalchemy，跳过学生班级测试")
     class StudentClassServiceTests(unittest.TestCase):

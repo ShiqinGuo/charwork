@@ -320,3 +320,75 @@ async def get_submission_detail(
         elif "提交不存在" in error_msg:
             raise HTTPException(status_code=404, detail=error_msg)
         raise HTTPException(status_code=400, detail=error_msg)
+
+
+@router.get("/me/submissions/{submission_id}/ai-feedback")
+async def get_ai_feedback(
+    submission_id: str,
+    current_student: Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        查看 AI 反馈。
+
+    参数：
+        submission_id (str): 提交ID。
+        current_student (Student): 当前登录的学生。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        dict: 返回 AI 反馈字典。
+
+    异常：
+        HTTPException(403): 无权限访问。
+        HTTPException(404): 提交或反馈不存在。
+    """
+    try:
+        result = await StudentClassService(db).get_ai_feedback(
+            current_student.id, submission_id
+        )
+        return result
+    except ValueError as e:
+        error_msg = str(e)
+        if "无权限访问" in error_msg:
+            raise HTTPException(status_code=403, detail=error_msg)
+        elif "提交不存在" in error_msg or "反馈不存在" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
+
+
+@router.get("/me/submissions/{submission_id}/teacher-feedback")
+async def get_teacher_feedback(
+    submission_id: str,
+    current_student: Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        查看教师反馈。
+
+    参数：
+        submission_id (str): 提交ID。
+        current_student (Student): 当前登录的学生。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        dict: 返回教师反馈字典。
+
+    异常：
+        HTTPException(403): 无权限访问。
+        HTTPException(404): 提交或反馈不存在。
+    """
+    try:
+        result = await StudentClassService(db).get_teacher_feedback(
+            current_student.id, submission_id
+        )
+        return result
+    except ValueError as e:
+        error_msg = str(e)
+        if "无权限访问" in error_msg:
+            raise HTTPException(status_code=403, detail=error_msg)
+        elif "提交不存在" in error_msg or "反馈不存在" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
