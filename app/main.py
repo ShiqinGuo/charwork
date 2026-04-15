@@ -26,6 +26,7 @@ from app.api.v1 import (
     routes_management_systems,
     routes_messages,
     routes_search,
+    routes_student_classes,
     routes_students,
     routes_submissions,
     routes_teachers,
@@ -41,7 +42,7 @@ from app.services.hanzi_dictionary_service import HanziDictionaryService
 from app.services.management_system_service import ManagementSystemService
 
 
-ROOT_MESSAGE = "欢迎使用 HanziProject API"
+ROOT_MESSAGE = "Shaneguo's project"
 HEALTH_STATUS = "ok"
 ROUTER_CONFIGS = (
     (routes_hanzi.router, f"{settings.API_V1_STR}/hanzi", ["hanzi"]),
@@ -56,6 +57,7 @@ ROUTER_CONFIGS = (
     (routes_logs.router, f"{settings.API_V1_STR}/logs", ["logs"]),
     (routes_teachers.router, f"{settings.API_V1_STR}/teachers", ["teachers"]),
     (routes_students.router, f"{settings.API_V1_STR}/students", ["students"]),
+    (routes_student_classes.router, f"{settings.API_V1_STR}/students", ["student-classes"]),
     (routes_submissions.router, settings.API_V1_STR, ["submissions"]),
     (routes_comments.router, f"{settings.API_V1_STR}/comments", ["comments"]),
     (routes_messages.router, f"{settings.API_V1_STR}/messages", ["messages"]),
@@ -88,7 +90,7 @@ def _build_cors_options() -> dict[str, object]:
 async def _bootstrap_application() -> None:
     """
     功能描述：
-        处理application。
+        启动app时执行的钩子函数。
 
     参数：
         无。
@@ -122,13 +124,13 @@ def _include_routers(application: FastAPI) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """
     功能描述：
         处理main。
 
     参数：
-        app (FastAPI): FastAPI 类型的数据。
+        _app (FastAPI): FastAPI实例。
 
     返回值：
         None: 无返回值。
@@ -157,13 +159,13 @@ app.mount("/media", StaticFiles(directory=settings.MEDIA_ROOT), name="media")
 def read_root():
     """
     功能描述：
-        处理root。
+        API节点测试
 
     参数：
         无。
 
     返回值：
-        None: 无返回值。
+        dict[str, object]: 返回ROOT_MESSAGE。
     """
     return {"message": ROOT_MESSAGE}
 
