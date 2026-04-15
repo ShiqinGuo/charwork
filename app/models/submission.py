@@ -30,7 +30,9 @@ class Submission(Base):
 
     status: Mapped[SubmissionStatus] = mapped_column(String(20), default=SubmissionStatus.SUBMITTED)
     score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    teacher_feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # AI 生成的结构化评语：{status, generated_at, items:[{image_index,char,stroke_score,...}]}
+    ai_feedback: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     submitted_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     graded_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
