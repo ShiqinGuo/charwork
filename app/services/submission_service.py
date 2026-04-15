@@ -254,10 +254,13 @@ class SubmissionService:
         submission = await self.repo.get(id, management_system_id)
         if not submission:
             return None
-        updated = await self.repo.update(submission, {
+        # graded_at 只在首次批改时写入，避免教师多次修改评语时时间戳被刷新
+        update_payload: dict = {
             "teacher_feedback": teacher_feedback,
             "score": score,
             "status": "graded",
-            "graded_at": datetime.now(),
-        })
+        }
+        if not submission.graded_at:
+            update_payload["graded_at"] = datetime.now()
+        updated = await self.repo.update(submission, update_payload)
         return SubmissionResponse.model_validate(updated)
