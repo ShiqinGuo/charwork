@@ -11,12 +11,14 @@ from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.redis_client import get_redis
 from app.core.security import SessionUser, get_session_user
 from app.models.student import Student
 from app.models.teacher import Teacher
 from app.models.user import UserRole
 from app.repositories.student_repo import StudentRepository
 from app.repositories.teacher_repo import TeacherRepository
+from app.utils.redis_cache import CACHE_TTL_MEDIUM, build_cache_key, cache_get, cache_set
 
 
 def extract_bearer_token(authorization: str | None) -> str:
@@ -111,10 +113,21 @@ async def get_current_teacher(
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="仅教师可执行该操作")
 
-    teacher = await TeacherRepository(db).get_by_user_id(current_user.id)
+    redis = get_redis()
+    cache_key = build_cache_key("profile:teacher", current_user.id)
+    cached_id = await cache_get(redis, cache_key)
+
+    repo = TeacherRepository(db)
+    if cached_id:
+        teacher = await repo.get(cached_id)
+        if teacher:
+            return teacher
+
+    teacher = await repo.get_by_user_id(current_user.id)
     if not teacher:
         raise HTTPException(status_code=404, detail="教师档案不存在")
 
+    await cache_set(redis, cache_key, teacher.id, ttl=CACHE_TTL_MEDIUM)
     return teacher
 
 
@@ -161,8 +174,19 @@ async def get_current_student(
     if current_user.role != UserRole.STUDENT:
         raise HTTPException(status_code=403, detail="仅学生可执行该操作")
 
-    student = await StudentRepository(db).get_by_user_id(current_user.id)
+    redis = get_redis()
+    cache_key = build_cache_key("profile:student", current_user.id)
+    cached_id = await cache_get(redis, cache_key)
+
+    repo = StudentRepository(db)
+    if cached_id:
+        student = await repo.get(cached_id)
+        if student:
+            return student
+
+    student = await repo.get_by_user_id(current_user.id)
     if not student:
         raise HTTPException(status_code=404, detail="学生档案不存在")
 
+    await cache_set(redis, cache_key, student.id, ttl=CACHE_TTL_MEDIUM)
     return student

@@ -12,14 +12,7 @@ from app.core.config import settings
 class StrokeService:
     def __init__(self):
         """
-        功能描述：
-            初始化StrokeService并准备运行所需的依赖对象。
-
-        参数：
-            无。
-
-        返回值：
-            None: 无返回值。
+        初始化stroke_data。
         """
         self._stroke_data: Dict[str, str] = {}
 

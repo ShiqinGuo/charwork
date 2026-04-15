@@ -48,7 +48,8 @@ class ManagementSystemRecordRepository:
         result = await self.db.execute(stmt)
         return int(result.scalar() or 0)
 
-    async def get(self, record_id: str, management_system_id: str, owner_user_id: str) -> Optional[ManagementSystemRecord]:
+    async def get(self, record_id: str, management_system_id: str,
+                  owner_user_id: str) -> Optional[ManagementSystemRecord]:
         result = await self.db.execute(
             select(ManagementSystemRecord).where(
                 ManagementSystemRecord.id == record_id,

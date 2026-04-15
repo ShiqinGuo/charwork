@@ -4,14 +4,56 @@ from typing import Any
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import SessionUser
 from app.models.assignment import Assignment
 from app.models.student import Student
 from app.models.submission import Submission
+from app.models.user import UserRole
 
 
 class AIToolsService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def search_resources(
+        self,
+        keyword: str,
+        management_system_id: str,
+        teacher_user_id: str,
+        modules: list[str] | None = None,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """调用 ES 跨模块搜索，返回结果列表（含跳转 URL）。"""
+        from app.services.cross_search_service import CrossSearchService
+
+        # 教师角色在 CrossSearchService 中不做额外权限裁剪
+        teacher_session = SessionUser(
+            id=teacher_user_id,
+            email="",
+            username="",
+            role=UserRole.TEACHER,
+            is_active=True,
+        )
+        service = CrossSearchService(self.db)
+        result = await service.search(
+            keyword=keyword,
+            current_user=teacher_session,
+            management_system_id=management_system_id,
+            modules=modules,
+            limit=limit,
+        )
+        items = [
+            {
+                "module": hit.module,
+                "id": hit.id,
+                "title": hit.title,
+                "content": hit.content[:200],
+                "target_type": hit.target_type,
+                "url": hit.url,
+            }
+            for hit in result.items
+        ]
+        return {"keyword": keyword, "total": result.total, "items": items}
 
     async def get_student_recent_assignments(
         self,

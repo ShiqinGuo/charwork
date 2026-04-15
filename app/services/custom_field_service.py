@@ -6,7 +6,7 @@
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Awaitable, Callable, TypeAlias, cast
+from typing import Any, Awaitable, Callable, TypeAlias
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError

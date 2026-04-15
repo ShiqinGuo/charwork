@@ -24,7 +24,7 @@ class AIChatResponse(BaseModel):
 
 
 class AIChatStreamEvent(BaseModel):
-    event: Literal["tool_call_start", "tool_call_result", "message_chunk", "done", "error"]
+    event: Literal["status", "thinking_chunk", "tool_call_start", "tool_call_result", "message_chunk", "done", "error"]
     data: dict[str, Any]
 
 

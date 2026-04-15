@@ -56,7 +56,7 @@ class HanziService:
     async def get_hanzi_by_char(self, char: str, management_system_id: str) -> Optional[HanziResponse]:
         """
         功能描述：
-            按条件获取汉字by字符。
+            根据字符获取汉字实例。
 
         参数：
             char (str): 字符串结果。
@@ -120,11 +120,34 @@ class HanziService:
         return HanziListResponse(**payload)
 
     async def create_hanzi(self, hanzi_in: HanziCreate, management_system_id: str) -> HanziResponse:
+        """
+        功能描述：
+            创建汉字。
+
+        参数：
+            hanzi_in (HanziCreate): 创建汉字的请求体。
+            management_system_id (str): 管理系统ID，用于限制数据作用域。
+
+        返回值：
+            HanziResponse: 返回创建的汉字对象。
+        """
         prepared = await self._prepare_payload(hanzi_in)
         hanzi = await self.repo.create(prepared, management_system_id)
         return self._to_response(hanzi)
 
     async def update_hanzi(self, id: str, hanzi_in: HanziUpdate, management_system_id: str) -> Optional[HanziResponse]:
+        """
+        功能描述：
+            更新汉字。
+
+        参数：
+            id (str): 目标记录ID。
+            hanzi_in (HanziUpdate): 更新汉字的请求体。
+            management_system_id (str): 管理系统ID，用于限制数据作用域。
+
+        返回值：
+            Optional[HanziResponse]: 返回更新后的汉字对象；未命中时返回 None。
+        """
         hanzi = await self.repo.get(id, management_system_id)
         if not hanzi:
             return None
@@ -152,11 +175,21 @@ class HanziService:
         await self.repo.delete(hanzi)
         return True
 
-    def get_strokes(self, ch: str) -> dict:
+    async def get_strokes(self, ch: str) -> dict:
+        """
+        功能描述：
+            根据字符获取汉字的笔画信息。
+
+        参数：
+            ch (str): 目标汉字字符。
+
+        返回值：
+            dict: 返回包含字符、笔画数和笔画顺序的字典。
+        """
         return {
             "character": ch,
-            "stroke_count": stroke_service.get_stroke_count(ch),
-            "stroke_order": stroke_service.get_stroke_order(ch),
+            "stroke_count": await self.repo.get_stroke_count(ch),
+            "stroke_order": await self.repo.get_stroke_order(ch),
         }
 
     async def search_by_stroke_order(
@@ -186,6 +219,16 @@ class HanziService:
             Path(file_path).unlink(missing_ok=True)
 
     async def build_batch_prefill_by_uploads(self, files: list[UploadFile]) -> HanziOCRBatchPrefillResponse:
+        """
+        功能描述：
+            批量处理OCR识别结果，生成汉字的预填充数据。
+
+        参数：
+            files (list[UploadFile]): 上传的OCR识别文件列表。
+
+        返回值：
+            HanziOCRBatchPrefillResponse: 返回包含批量预填充数据的响应对象。
+        """
         items: list[HanziOCRBatchPrefillItem] = []
         for file in files:
             file_path = await self._save_upload_file(file)

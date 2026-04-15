@@ -195,3 +195,13 @@ class HanziRepository:
     async def delete(self, hanzi: Hanzi) -> None:
         await self.db.delete(hanzi)
         await self.db.commit()
+
+    async def get_stroke_count(self, character: str) -> Optional[int]:
+        query = select(Hanzi.stroke_count).where(Hanzi.character == character)
+        result = await self.db.execute(query)
+        return result.scalar()
+
+    async def get_stroke_order(self, character: str) -> Optional[str]:
+        query = select(Hanzi.stroke_order).where(Hanzi.character == character)
+        result = await self.db.execute(query)
+        return result.scalar()

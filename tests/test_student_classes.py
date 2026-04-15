@@ -266,6 +266,98 @@ if SQLALCHEMY_READY:
 
             self.assertIn("学生未加入该班级", str(exc.exception))
 
+        async def test_get_class_assignments(self):
+            """测试查看班级作业列表"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟学生班级关系
+            student_class = SimpleNamespace(
+                id="sc-1",
+                student_id="stu-1",
+                teaching_class_id="class-1",
+                status="active",
+                joined_at=datetime(2026, 4, 15, 10, 0, 0),
+            )
+
+            # 模拟课程
+            course = SimpleNamespace(
+                id="course-1",
+                name="语文",
+                teaching_class_id="class-1",
+            )
+
+            # 模拟作业
+            assignment = SimpleNamespace(
+                id="assign-1",
+                title="第一课作业",
+                description="完成第一课的练习",
+                due_date=datetime(2026, 4, 20, 23, 59, 59),
+                created_at=datetime(2026, 4, 15, 10, 0, 0),
+                course_id="course-1",
+            )
+
+            # 模拟提交
+            submission = SimpleNamespace(
+                id="sub-1",
+                assignment_id="assign-1",
+                student_id="stu-1",
+                status="submitted",
+                submitted_at=datetime(2026, 4, 18, 10, 0, 0),
+            )
+
+            # 设置 mock
+            service.student_class_repo.get_by_student_and_class = AsyncMock(
+                return_value=student_class
+            )
+
+            # 模拟 CourseRepository
+            with patch("app.services.student_class_service.CourseRepository") as mock_course_repo_class:
+                mock_course_repo = AsyncMock()
+                mock_course_repo.list_by_teaching_class = AsyncMock(return_value=[course])
+                mock_course_repo_class.return_value = mock_course_repo
+
+                # 模拟 AssignmentRepository
+                with patch("app.services.student_class_service.AssignmentRepository") as mock_assign_repo_class:
+                    mock_assign_repo = AsyncMock()
+                    mock_assign_repo.get_all = AsyncMock(return_value=[assignment])
+                    mock_assign_repo.count = AsyncMock(return_value=1)
+                    mock_assign_repo_class.return_value = mock_assign_repo
+
+                    # 模拟 SubmissionRepository
+                    with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                        mock_sub_repo = AsyncMock()
+                        mock_sub_repo.get_all_by_assignment = AsyncMock(return_value=[submission])
+                        mock_sub_repo_class.return_value = mock_sub_repo
+
+                        result = await service.get_class_assignments("stu-1", "class-1", skip=0, limit=20)
+
+                        self.assertEqual(result["total"], 1)
+                        self.assertEqual(len(result["items"]), 1)
+                        self.assertEqual(result["items"][0]["id"], "assign-1")
+                        self.assertEqual(result["items"][0]["title"], "第一课作业")
+                        self.assertEqual(result["items"][0]["submission_status"], "submitted")
+                        self.assertEqual(result["items"][0]["submission_id"], "sub-1")
+
+        async def test_get_class_assignments_not_joined(self):
+            """测试查看未加入班级的作业列表"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 设置 mock - 学生未加入班级
+            service.student_class_repo.get_by_student_and_class = AsyncMock(
+                return_value=None
+            )
+
+            with self.assertRaises(ValueError) as exc:
+                await service.get_class_assignments("stu-1", "class-1")
+
+            self.assertIn("学生未加入该班级", str(exc.exception))
+
 else:
     @unittest.skip("当前环境缺少 sqlalchemy，跳过学生班级测试")
     class StudentClassServiceTests(unittest.TestCase):

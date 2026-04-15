@@ -6,8 +6,10 @@
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis_client import get_redis
 from app.repositories.student_repo import StudentRepository
 from app.schemas.student import StudentCreate, StudentUpdate, StudentResponse
+from app.utils.redis_cache import build_cache_key, cache_delete
 
 
 class StudentService:
@@ -87,6 +89,7 @@ class StudentService:
         if not student:
             return None
         student = await self.repo.update(student, student_in)
+        await cache_delete(get_redis(), build_cache_key("profile:student", student.user_id))
         return StudentResponse.model_validate(student)
 
     async def delete_student(self, id: str) -> bool:
@@ -103,5 +106,6 @@ class StudentService:
         student = await self.repo.get(id)
         if not student:
             return False
+        await cache_delete(get_redis(), build_cache_key("profile:student", student.user_id))
         await self.repo.delete(student)
         return True

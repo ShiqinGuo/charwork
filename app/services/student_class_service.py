@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.student_class_repo import StudentClassRepository
 from app.repositories.teaching_class_repo import TeachingClassRepository
 from app.repositories.teacher_repo import TeacherRepository
+from app.repositories.course_repo import CourseRepository
+from app.repositories.assignment_repo import AssignmentRepository
+from app.repositories.submission_repo import SubmissionRepository
 from app.schemas.student_class import (
     StudentClassResponse,
     StudentClassListResponse,
@@ -198,6 +201,82 @@ class StudentClassService:
         items, total = await self.student_class_repo.list_class_members(
             teaching_class_id, skip, limit
         )
+
+        return {
+            "total": total,
+            "items": items,
+        }
+
+    async def get_class_assignments(
+        self, student_id: str, teaching_class_id: str, status: Optional[str] = None, skip: int = 0, limit: int = 20
+    ) -> dict:
+        """
+        功能描述：
+            获取班级作业列表。
+
+        参数：
+            student_id (str): 学生ID。
+            teaching_class_id (str): 班级ID。
+            status (Optional[str]): 作业状态筛选。
+            skip (int): 分页偏移量。
+            limit (int): 单次查询的最大返回数量。
+
+        返回值：
+            dict: 返回包含作业列表的字典。
+
+        异常：
+            ValueError: 学生未加入该班级时抛出。
+        """
+        # 验证学生已加入班级
+        student_class = await self.student_class_repo.get_by_student_and_class(
+            student_id, teaching_class_id
+        )
+        if not student_class:
+            raise ValueError("学生未加入该班级")
+
+        # 获取班级的所有课程
+        course_repo = CourseRepository(self.db)
+        courses = await course_repo.list_by_teaching_class(teaching_class_id)
+        course_ids = [course.id for course in courses]
+
+        # 查询班级的所有作业
+        assignment_repo = AssignmentRepository(self.db)
+        assignments = await assignment_repo.get_all(
+            skip=skip,
+            limit=limit,
+            course_ids=course_ids,
+            status=status,
+        )
+        total = await assignment_repo.count(
+            course_ids=course_ids,
+            status=status,
+        )
+
+        # 获取学生的提交状态
+        submission_repo = SubmissionRepository(self.db)
+        items = []
+        for assignment in assignments:
+            submission = await submission_repo.get_all_by_assignment(
+                assignment.id,
+                student_id=student_id,
+                limit=1,
+            )
+            submission_status = "not_submitted"
+            submission_id = None
+            if submission:
+                submission_obj = submission[0]
+                submission_id = submission_obj.id
+                submission_status = submission_obj.status
+
+            items.append({
+                "id": assignment.id,
+                "title": assignment.title,
+                "description": assignment.description,
+                "deadline": assignment.due_date,
+                "created_at": assignment.created_at,
+                "submission_status": submission_status,
+                "submission_id": submission_id,
+            })
 
         return {
             "total": total,

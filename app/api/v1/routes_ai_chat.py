@@ -32,6 +32,11 @@ async def stream_ai_chat(
         return StreamingResponse(
             service.stream_chat(body, scope.management_system_id, current_teacher.user_id),
             media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

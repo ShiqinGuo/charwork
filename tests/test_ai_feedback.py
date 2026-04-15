@@ -1,4 +1,8 @@
-import os, unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+from app.models.submission import Submission
+import os
+import unittest
 from datetime import datetime
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("MYSQL_HOST", "localhost")
@@ -7,7 +11,6 @@ os.environ.setdefault("MYSQL_USER", "root")
 os.environ.setdefault("MYSQL_PASSWORD", "root")
 os.environ.setdefault("MYSQL_DB", "charwork")
 
-from app.models.submission import Submission
 
 class TestSubmissionModel(unittest.TestCase):
     def test_has_ai_feedback_field(self):
@@ -38,20 +41,17 @@ class TestSubmissionSchemas(unittest.TestCase):
         self.assertEqual(obj.score, 8)
 
 
-from unittest.mock import AsyncMock, patch
-from types import SimpleNamespace
-
 class TestAIFeedbackService(unittest.IsolatedAsyncioTestCase):
     async def test_generate_done_on_success(self):
         from app.services.ai_feedback_service import AIFeedbackService
         submission = SimpleNamespace(id="sub-1", image_paths=["media/t.jpg"], ai_feedback=None)
         svc = AIFeedbackService(AsyncMock())
         with patch.object(svc, '_recognize_char', new=AsyncMock(return_value="永")), \
-             patch.object(svc, '_call_vision_model', new=AsyncMock(return_value={
-                 "stroke_score": 7, "structure_score": 8, "overall_score": 6, "summary": "不错"
-             })), \
-             patch.object(svc.repo, 'get', new=AsyncMock(return_value=submission)), \
-             patch.object(svc.repo, 'update', new=AsyncMock(return_value=submission)):
+                patch.object(svc, '_call_vision_model', new=AsyncMock(return_value={
+                    "stroke_score": 7, "structure_score": 8, "overall_score": 6, "summary": "不错"
+                })), \
+                patch.object(svc.repo, 'get', new=AsyncMock(return_value=submission)), \
+                patch.object(svc.repo, 'update', new=AsyncMock(return_value=submission)):
             await svc.generate("sub-1")
             kwargs = svc.repo.update.call_args[0][1]
             self.assertEqual(kwargs['ai_feedback']['status'], 'done')
@@ -63,8 +63,8 @@ class TestAIFeedbackService(unittest.IsolatedAsyncioTestCase):
         submission = SimpleNamespace(id="sub-1", image_paths=["media/t.jpg"], ai_feedback=None)
         svc = AIFeedbackService(AsyncMock())
         with patch.object(svc, '_recognize_char', new=AsyncMock(side_effect=Exception("ocr error"))), \
-             patch.object(svc.repo, 'get', new=AsyncMock(return_value=submission)), \
-             patch.object(svc.repo, 'update', new=AsyncMock(return_value=submission)):
+                patch.object(svc.repo, 'get', new=AsyncMock(return_value=submission)), \
+                patch.object(svc.repo, 'update', new=AsyncMock(return_value=submission)):
             await svc.generate("sub-1")
             kwargs = svc.repo.update.call_args[0][1]
             self.assertEqual(kwargs['ai_feedback']['status'], 'failed')

@@ -8,6 +8,7 @@ from typing import Optional
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.redis_client import get_redis
 from app.models.management_system import ManagementSystem, ManagementSystemAccessRole, UserManagementSystem
 from app.models.user import User, UserRole
 from app.repositories.management_system_repo import ManagementSystemRepository
@@ -19,6 +20,7 @@ from app.schemas.management_system import (
     ManagementSystemResponse,
     ManagementSystemUpdate,
 )
+from app.utils.redis_cache import CACHE_TTL_MEDIUM, build_cache_key, cache_delete, cache_get, cache_set
 
 
 DEFAULT_MANAGEMENT_SYSTEM_PRESET_KEY = "builtin_hanzi_default"
@@ -26,9 +28,12 @@ DEFAULT_MANAGEMENT_SYSTEM_NAME = "默认汉字管理系统"
 DEFAULT_MANAGEMENT_SYSTEM_DESCRIPTION = "系统自动初始化的默认汉字管理系统，提供简化字段与基础增删改查能力"
 DEFAULT_MANAGEMENT_SYSTEM_TYPE = "hanzi"
 DEFAULT_HANZI_FIELD_DEFINITIONS = (
-    {"field_key": "character", "name": "汉字", "field_type": "text", "is_required": True, "is_searchable": True, "enabled": True, "options": [], "locked": True},
-    {"field_key": "pinyin", "name": "拼音", "field_type": "text", "is_required": False, "is_searchable": True, "enabled": True, "options": [], "locked": False},
-    {"field_key": "meaning", "name": "释义", "field_type": "text", "is_required": False, "is_searchable": True, "enabled": True, "options": [], "locked": False},
+    {"field_key": "character", "name": "汉字", "field_type": "text", "is_required": True,
+        "is_searchable": True, "enabled": True, "options": [], "locked": True},
+    {"field_key": "pinyin", "name": "拼音", "field_type": "text", "is_required": False,
+        "is_searchable": True, "enabled": True, "options": [], "locked": False},
+    {"field_key": "meaning", "name": "释义", "field_type": "text", "is_required": False,
+        "is_searchable": True, "enabled": True, "options": [], "locked": False},
 )
 DEFAULT_LOCKED_FIELD_DEFINITIONS = (
     {
@@ -357,6 +362,7 @@ class ManagementSystemService:
             raise ValueError("默认汉字管理系统不支持删除")
         await self.repo.delete_system(management_system)
         await self.repo.save()
+        await cache_delete(get_redis(), build_cache_key("ms:default", current_user.id))
         return True
 
     async def ensure_default_system_entity(self, user: User, commit: bool = True) -> ManagementSystem:
@@ -371,8 +377,21 @@ class ManagementSystemService:
         返回值：
             ManagementSystem: 返回ManagementSystem类型的处理结果。
         """
+        redis = get_redis()
+        cache_key = build_cache_key("ms:default", user.id)
+
+        # 先查缓存，命中则用主键查询替代 JOIN 查询
+        cached_id = await cache_get(redis, cache_key)
+        if cached_id:
+            item = await self.repo.get(cached_id)
+            if item:
+                return item
+            # 缓存 ID 对应记录已不存在，清除脏缓存继续走 DB
+            await cache_delete(redis, cache_key)
+
         existing = await self.repo.get_default_for_user(user.id, DEFAULT_MANAGEMENT_SYSTEM_PRESET_KEY)
         if existing:
+            await cache_set(redis, cache_key, existing.id, ttl=CACHE_TTL_MEDIUM)
             return existing
 
         try:
@@ -407,6 +426,7 @@ class ManagementSystemService:
 
         ensured = await self.repo.get_default_for_user(user.id, DEFAULT_MANAGEMENT_SYSTEM_PRESET_KEY)
         if ensured:
+            await cache_set(redis, cache_key, ensured.id, ttl=CACHE_TTL_MEDIUM)
             return ensured
 
         raise ValueError("默认汉字管理系统初始化失败")

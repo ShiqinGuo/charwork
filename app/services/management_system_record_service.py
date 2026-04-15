@@ -45,7 +45,8 @@ class ManagementSystemRecordService:
             items=[self._to_response(item) for item in items],
         )
 
-    async def get_record(self, management_system_id: str, record_id: str, current_user: User) -> Optional[ManagementSystemRecordResponse]:
+    async def get_record(self, management_system_id: str, record_id: str,
+                         current_user: User) -> Optional[ManagementSystemRecordResponse]:
         await self._ensure_owned_system(management_system_id, current_user)
         item = await self.repo.get(record_id, management_system_id, current_user.id)
         if not item:

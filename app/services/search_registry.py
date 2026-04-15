@@ -172,7 +172,12 @@ async def _build_comment_document(db: AsyncSession, item: Comment) -> SearchDocu
         title=str(item.target_type),
         content=item.content,
         management_system_ids=[management_system_id],
-        extra_fields={"course_id": course_id or "", "target_type": "discussion", "comment_target_type": str(item.target_type), "target_id": item.target_id},
+        extra_fields={
+            "course_id": course_id or "",
+            "target_type": "discussion",
+            "comment_target_type": str(item.target_type),
+            "target_id": item.target_id,
+        },
     )
 
 
