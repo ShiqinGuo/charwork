@@ -72,6 +72,21 @@ class TestAIFeedbackService(unittest.IsolatedAsyncioTestCase):
 
 
 class TestAIFeedbackTask(unittest.TestCase):
-    def test_task_is_callable(self):
+    def test_task_is_registered(self):
         from app.tasks.ai_feedback_tasks import generate_ai_feedback
-        self.assertTrue(callable(generate_ai_feedback))
+        # 验证 task 已注册到 celery，name 与约定一致
+        self.assertEqual(generate_ai_feedback.name, "generate_ai_feedback")
+
+    def test_generate_calls_service(self):
+        from app.tasks.ai_feedback_tasks import _generate
+        with patch('app.tasks.ai_feedback_tasks.AsyncSessionLocal') as mock_session_cls:
+            mock_db = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_db)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            with patch('app.services.ai_feedback_service.AIFeedbackService') as mock_svc_cls:
+                mock_svc = AsyncMock()
+                mock_svc.generate = AsyncMock()
+                mock_svc_cls.return_value = mock_svc
+                import asyncio
+                result = asyncio.run(_generate("sub-1"))
+                self.assertEqual(result['status'], 'ok')
