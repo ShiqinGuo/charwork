@@ -4,14 +4,14 @@
 为学生提供班级相关的 API 端点，包括加入班级、查询班级列表等功能。
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_student
 from app.core.database import get_db
 from app.models.student import Student
-from app.schemas.student_class import StudentClassJoinResponse
+from app.schemas.student_class import StudentClassJoinResponse, StudentClassListResponse
 from app.services.student_class_service import StudentClassService
 
 
@@ -61,3 +61,28 @@ async def join_class(
         elif "班级不存在" in error_msg:
             raise HTTPException(status_code=404, detail=error_msg)
         raise HTTPException(status_code=400, detail=error_msg)
+
+
+@router.get("/me/classes", response_model=StudentClassListResponse)
+async def list_student_classes(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    current_student: Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        查看学生加入的班级列表。
+
+    参数：
+        skip (int): 分页偏移量，默认为 0。
+        limit (int): 单次查询的最大返回数量，默认为 20，最大为 100。
+        current_student (Student): 当前登录的学生。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        StudentClassListResponse: 返回班级列表响应对象。
+    """
+    return await StudentClassService(db).list_student_classes(
+        current_student.id, skip=skip, limit=limit
+    )

@@ -103,6 +103,35 @@ if SQLALCHEMY_READY:
 
             self.assertIn("班级不存在", str(exc.exception))
 
+        async def test_list_student_classes(self):
+            """测试查看学生加入的班级列表"""
+            from types import SimpleNamespace
+
+            service = StudentClassService(AsyncMock())
+
+            # 模拟学生班级关系
+            student_class = SimpleNamespace(
+                id="sc-1",
+                student_id="stu-1",
+                teaching_class_id="class-1",
+                status="active",
+                joined_at=datetime(2026, 4, 15, 10, 0, 0),
+                created_at=datetime(2026, 4, 15, 10, 0, 0),
+                updated_at=datetime(2026, 4, 15, 10, 0, 0),
+            )
+
+            # 设置 mock
+            service.student_class_repo.list_by_student = AsyncMock(
+                return_value=([student_class], 1)
+            )
+
+            result = await service.list_student_classes("stu-1", skip=0, limit=20)
+
+            self.assertEqual(result.total, 1)
+            self.assertEqual(len(result.items), 1)
+            self.assertEqual(result.items[0].id, "sc-1")
+            self.assertEqual(result.items[0].teaching_class_id, "class-1")
+
 else:
     @unittest.skip("当前环境缺少 sqlalchemy，跳过学生班级测试")
     class StudentClassServiceTests(unittest.TestCase):
