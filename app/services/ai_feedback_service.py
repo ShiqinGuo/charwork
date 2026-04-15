@@ -95,7 +95,9 @@ class AIFeedbackService:
             if isinstance(result, list):
                 return "".join(result)
             return str(result) if result else ""
-        except Exception:
+        except Exception as exc:
+            # OCR 失败时降级为空字符串，视觉模型仍会尝试识别图片
+            logger.warning("OCR 识别失败 path=%s: %s", image_path, exc)
             return ""
 
     async def _call_vision_model(self, image_path: str, char: str) -> Dict[str, Any]:

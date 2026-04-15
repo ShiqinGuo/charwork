@@ -56,6 +56,7 @@ class TestAIFeedbackService(unittest.IsolatedAsyncioTestCase):
             kwargs = svc.repo.update.call_args[0][1]
             self.assertEqual(kwargs['ai_feedback']['status'], 'done')
             self.assertEqual(len(kwargs['ai_feedback']['items']), 1)
+            self.assertIn('generated_at', kwargs['ai_feedback'])
 
     async def test_generate_failed_on_exception(self):
         from app.services.ai_feedback_service import AIFeedbackService
@@ -67,3 +68,4 @@ class TestAIFeedbackService(unittest.IsolatedAsyncioTestCase):
             await svc.generate("sub-1")
             kwargs = svc.repo.update.call_args[0][1]
             self.assertEqual(kwargs['ai_feedback']['status'], 'failed')
+            self.assertIn('generated_at', kwargs['ai_feedback'])
