@@ -19,6 +19,7 @@ def upgrade() -> None:
     op.alter_column('submission', 'feedback',
                     new_column_name='teacher_feedback',
                     existing_type=sa.Text(),
+                    existing_nullable=True,
                     nullable=True)
     op.add_column('submission', sa.Column('ai_feedback', sa.JSON(), nullable=True))
 
@@ -28,4 +29,5 @@ def downgrade() -> None:
     op.alter_column('submission', 'teacher_feedback',
                     new_column_name='feedback',
                     existing_type=sa.Text(),
+                    existing_nullable=True,
                     nullable=True)

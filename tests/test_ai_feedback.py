@@ -11,10 +11,13 @@ from app.models.submission import Submission
 
 class TestSubmissionModel(unittest.TestCase):
     def test_has_ai_feedback_field(self):
-        self.assertTrue(hasattr(Submission(), 'ai_feedback'))
+        col_names = {c.name for c in Submission.__table__.columns}
+        self.assertIn('ai_feedback', col_names)
 
     def test_has_teacher_feedback_field(self):
-        self.assertTrue(hasattr(Submission(), 'teacher_feedback'))
+        col_names = {c.name for c in Submission.__table__.columns}
+        self.assertIn('teacher_feedback', col_names)
 
     def test_no_feedback_field(self):
-        self.assertFalse(hasattr(Submission(), 'feedback'))
+        col_names = {c.name for c in Submission.__table__.columns}
+        self.assertNotIn('feedback', col_names)

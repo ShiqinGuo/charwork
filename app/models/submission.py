@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from enum import Enum as PyEnum
 from sqlalchemy import String, Integer, Text, DateTime, func, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -32,7 +32,7 @@ class Submission(Base):
     score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     teacher_feedback: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # AI 生成的结构化评语：{status, generated_at, items:[{image_index,char,stroke_score,...}]}
-    ai_feedback: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    ai_feedback: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     submitted_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
     graded_at: Mapped[Optional[DateTime]] = mapped_column(DateTime, nullable=True)
@@ -43,14 +43,4 @@ class Submission(Base):
     # 评论为多态关联（作业/提交），当前采用目标编号 + 目标类型方式在业务层查询
 
     def __repr__(self):
-        """
-        功能描述：
-            处理Submission。
-
-        参数：
-            无。
-
-        返回值：
-            None: 无返回值。
-        """
         return f"<Submission(id='{self.id}', status='{self.status}')>"
