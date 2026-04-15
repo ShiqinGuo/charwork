@@ -13,7 +13,7 @@ from app.repositories.course_repo import CourseRepository
 from app.repositories.student_repo import StudentRepository
 from app.schemas.submission import (
     SubmissionCreate, SubmissionGrade, SubmissionListResponse,
-    SubmissionResponse, TeacherFeedbackUpdate,
+    SubmissionResponse, TeacherFeedbackUpdate, AIFeedbackResponse,
 )
 from app.services.submission_service import SubmissionService
 from app.utils.pagination import resolve_pagination
@@ -169,7 +169,7 @@ async def grade_submission(
     return submission
 
 
-@router.get("/submissions/{id}/ai-feedback")
+@router.get("/submissions/{id}/ai-feedback", response_model=AIFeedbackResponse)
 async def get_ai_feedback(
     id: str,
     scope: ManagementScope = Depends(get_management_scope),

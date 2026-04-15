@@ -52,3 +52,18 @@ class SubmissionListResponse(BaseModel):
     skip: Optional[int] = None
     limit: Optional[int] = None
     has_more: Optional[bool] = None
+
+
+class AIFeedbackItem(BaseModel):
+    image_index: int
+    char: str
+    stroke_score: Optional[int] = None
+    structure_score: Optional[int] = None
+    overall_score: Optional[int] = None
+    summary: Optional[str] = None
+
+
+class AIFeedbackResponse(BaseModel):
+    status: str
+    generated_at: Optional[str] = None
+    items: List[AIFeedbackItem] = []
