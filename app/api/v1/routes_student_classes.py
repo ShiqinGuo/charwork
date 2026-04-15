@@ -206,3 +206,39 @@ async def get_class_assignments(
         elif "班级不存在" in error_msg:
             raise HTTPException(status_code=404, detail=error_msg)
         raise HTTPException(status_code=400, detail=error_msg)
+
+
+@router.get("/me/assignments/{assignment_id}")
+async def get_assignment_detail(
+    assignment_id: str,
+    current_student: Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        查看作业详情。
+
+    参数：
+        assignment_id (str): 作业ID。
+        current_student (Student): 当前登录的学生。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        dict: 返回作业详情字典。
+
+    异常：
+        HTTPException(403): 学生未加入班级。
+        HTTPException(404): 作业不存在。
+    """
+    try:
+        result = await StudentClassService(db).get_assignment_detail(
+            current_student.id, assignment_id
+        )
+        return result
+    except ValueError as e:
+        error_msg = str(e)
+        if "学生未加入该班级" in error_msg:
+            raise HTTPException(status_code=403, detail=error_msg)
+        elif "作业不存在" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)

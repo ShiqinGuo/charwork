@@ -282,3 +282,68 @@ class StudentClassService:
             "total": total,
             "items": items,
         }
+
+    async def get_assignment_detail(
+        self, student_id: str, assignment_id: str
+    ) -> dict:
+        """
+        功能描述：
+            获取作业详情。
+
+        参数：
+            student_id (str): 学生ID。
+            assignment_id (str): 作业ID。
+
+        返回值：
+            dict: 返回包含作业详情的字典。
+
+        异常：
+            ValueError: 作业不存在或学生未加入该班级时抛出。
+        """
+        # 获取作业信息
+        assignment_repo = AssignmentRepository(self.db)
+        assignment = await assignment_repo.get(assignment_id)
+        if not assignment:
+            raise ValueError("作业不存在")
+
+        # 验证学生已加入该作业所属班级
+        course = assignment.course
+        if not course:
+            raise ValueError("作业不存在")
+
+        teaching_class_id = course.teaching_class_id
+        student_class = await self.student_class_repo.get_by_student_and_class(
+            student_id, teaching_class_id
+        )
+        if not student_class:
+            raise ValueError("学生未加入该班级")
+
+        # 查询学生对该作业的提交
+        submission_repo = SubmissionRepository(self.db)
+        submissions = await submission_repo.get_all_by_assignment(
+            assignment_id,
+            student_id=student_id,
+            limit=1,
+        )
+
+        submission_data = None
+        if submissions:
+            submission = submissions[0]
+            submission_data = {
+                "id": submission.id,
+                "status": submission.status,
+                "submitted_at": submission.submitted_at,
+                "content": submission.content,
+                "score": submission.score,
+            }
+
+        return {
+            "id": assignment.id,
+            "title": assignment.title,
+            "description": assignment.description,
+            "requirements": assignment.instruction_steps,
+            "deadline": assignment.due_date,
+            "created_at": assignment.created_at,
+            "attachments": [],  # TODO
+            "submission": submission_data,
+        }
