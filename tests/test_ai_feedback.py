@@ -69,3 +69,9 @@ class TestAIFeedbackService(unittest.IsolatedAsyncioTestCase):
             kwargs = svc.repo.update.call_args[0][1]
             self.assertEqual(kwargs['ai_feedback']['status'], 'failed')
             self.assertIn('generated_at', kwargs['ai_feedback'])
+
+
+class TestAIFeedbackTask(unittest.TestCase):
+    def test_task_is_callable(self):
+        from app.tasks.ai_feedback_tasks import generate_ai_feedback
+        self.assertTrue(callable(generate_ai_feedback))
