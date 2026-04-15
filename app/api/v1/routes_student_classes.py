@@ -242,3 +242,81 @@ async def get_assignment_detail(
         elif "作业不存在" in error_msg:
             raise HTTPException(status_code=404, detail=error_msg)
         raise HTTPException(status_code=400, detail=error_msg)
+
+
+@router.get("/me/submissions")
+async def get_student_submissions(
+    class_id: str = Query(None),
+    status: str = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    current_student: Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        查看学生提交列表。
+
+    参数：
+        class_id (str): 班级ID，可选。
+        status (str): 提交状态筛选，可选。
+        skip (int): 分页偏移量，默认为 0。
+        limit (int): 单次查询的最大返回数量，默认为 20，最大为 100。
+        current_student (Student): 当前登录的学生。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        dict: 返回提交列表字典。
+
+    异常：
+        HTTPException(403): 学生未加入班级。
+        HTTPException(404): 班级不存在。
+    """
+    try:
+        result = await StudentClassService(db).get_student_submissions(
+            current_student.id, class_id=class_id, skip=skip, limit=limit
+        )
+        return result
+    except ValueError as e:
+        error_msg = str(e)
+        if "学生未加入该班级" in error_msg:
+            raise HTTPException(status_code=403, detail=error_msg)
+        elif "班级不存在" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
+
+
+@router.get("/me/submissions/{submission_id}")
+async def get_submission_detail(
+    submission_id: str,
+    current_student: Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        查看提交详情。
+
+    参数：
+        submission_id (str): 提交ID。
+        current_student (Student): 当前登录的学生。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        dict: 返回提交详情字典。
+
+    异常：
+        HTTPException(403): 无权限访问。
+        HTTPException(404): 提交不存在。
+    """
+    try:
+        result = await StudentClassService(db).get_submission_detail(
+            current_student.id, submission_id
+        )
+        return result
+    except ValueError as e:
+        error_msg = str(e)
+        if "无权限访问" in error_msg:
+            raise HTTPException(status_code=403, detail=error_msg)
+        elif "提交不存在" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)

@@ -4,8 +4,10 @@
 """
 
 from typing import Optional
+from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.submission import Submission
 from app.repositories.student_class_repo import StudentClassRepository
 from app.repositories.teaching_class_repo import TeachingClassRepository
 from app.repositories.teacher_repo import TeacherRepository
@@ -346,4 +348,160 @@ class StudentClassService:
             "created_at": assignment.created_at,
             "attachments": [],  # TODO
             "submission": submission_data,
+        }
+
+    async def get_student_submissions(
+        self, student_id: str, class_id: Optional[str] = None, skip: int = 0, limit: int = 20
+    ) -> dict:
+        """
+        功能描述：
+            查询学生的所有提交。
+
+        参数：
+            student_id (str): 学生ID。
+            class_id (Optional[str]): 班级ID，如果指定则只查询该班级的提交。
+            skip (int): 分页偏移量。
+            limit (int): 单次查询的最大返回数量。
+
+        返回值：
+            dict: 返回包含提交列表的字典。
+
+        异常：
+            ValueError: 学生未加入指定班级时抛出。
+        """
+        submission_repo = SubmissionRepository(self.db)
+        course_repo = CourseRepository(self.db)
+        assignment_repo = AssignmentRepository(self.db)
+
+        # 如果指定了班级，验证学生已加入该班级
+        course_ids = None
+        if class_id:
+            student_class = await self.student_class_repo.get_by_student_and_class(
+                student_id, class_id
+            )
+            if not student_class:
+                raise ValueError("学生未加入该班级")
+
+            # 获取该班级的所有课程
+            courses = await course_repo.list_by_teaching_class(class_id)
+            course_ids = [course.id for course in courses]
+
+        # 查询学生的提交
+        if course_ids:
+            # 按课程ID过滤
+            assignments = await assignment_repo.get_all(
+                skip=skip,
+                limit=limit,
+                course_ids=course_ids,
+            )
+            total = await assignment_repo.count(course_ids=course_ids)
+        else:
+            # 查询所有提交
+            query = select(Submission).where(Submission.student_id == student_id)
+            result = await self.db.execute(
+                query.order_by(desc(Submission.submitted_at)).offset(skip).limit(limit)
+            )
+            submissions = result.scalars().all()
+
+            # 统计总数
+            count_query = select(func.count()).select_from(Submission).where(
+                Submission.student_id == student_id
+            )
+            count_result = await self.db.execute(count_query)
+            total = count_result.scalar()
+
+            # 构建返回数据
+            items = []
+            for submission in submissions:
+                assignment = submission.assignment
+                course = assignment.course if assignment else None
+                teaching_class = course.teaching_class if course else None
+
+                items.append({
+                    "id": submission.id,
+                    "assignment_id": assignment.id if assignment else None,
+                    "assignment_title": assignment.title if assignment else None,
+                    "class_name": teaching_class.name if teaching_class else None,
+                    "submitted_at": submission.submitted_at,
+                    "status": submission.status,
+                    "score": submission.score,
+                })
+
+            return {
+                "total": total,
+                "items": items,
+            }
+
+        # 构建返回数据（当指定班级时）
+        items = []
+        for assignment in assignments:
+            submissions = await submission_repo.get_all_by_assignment(
+                assignment.id,
+                student_id=student_id,
+                limit=1,
+            )
+
+            if submissions:
+                submission = submissions[0]
+                course = assignment.course
+                teaching_class = course.teaching_class if course else None
+
+                items.append({
+                    "id": submission.id,
+                    "assignment_id": assignment.id,
+                    "assignment_title": assignment.title,
+                    "class_name": teaching_class.name if teaching_class else None,
+                    "submitted_at": submission.submitted_at,
+                    "status": submission.status,
+                    "score": submission.score,
+                })
+
+        return {
+            "total": total,
+            "items": items,
+        }
+
+    async def get_submission_detail(
+        self, student_id: str, submission_id: str
+    ) -> dict:
+        """
+        功能描述：
+            获取提交详情。
+
+        参数：
+            student_id (str): 学生ID。
+            submission_id (str): 提交ID。
+
+        返回值：
+            dict: 返回包含提交详情的字典。
+
+        异常：
+            ValueError: 提交不存在或无权限访问时抛出。
+        """
+        submission_repo = SubmissionRepository(self.db)
+        submission = await submission_repo.get(submission_id)
+
+        if not submission:
+            raise ValueError("提交不存在")
+
+        # 验证是学生自己的提交
+        if submission.student_id != student_id:
+            raise ValueError("无权限访问")
+
+        # 获取作业和班级信息
+        assignment = submission.assignment
+        course = assignment.course if assignment else None
+        teaching_class = course.teaching_class if course else None
+
+        return {
+            "id": submission.id,
+            "assignment_id": assignment.id if assignment else None,
+            "assignment_title": assignment.title if assignment else None,
+            "class_name": teaching_class.name if teaching_class else None,
+            "submitted_at": submission.submitted_at,
+            "status": submission.status,
+            "content": submission.content,
+            "attachments": [],  # TODO
+            "score": submission.score,
+            "graded_at": submission.graded_at,
         }

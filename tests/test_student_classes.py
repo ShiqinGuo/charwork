@@ -552,6 +552,253 @@ if SQLALCHEMY_READY:
                     self.assertEqual(result["title"], "第一课作业")
                     self.assertIsNone(result["submission"])
 
+        async def test_get_student_submissions(self):
+            """测试查看学生提交列表"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟提交
+            submission = SimpleNamespace(
+                id="sub-1",
+                assignment_id="assign-1",
+                student_id="stu-1",
+                status="submitted",
+                submitted_at=datetime(2026, 4, 18, 10, 0, 0),
+                score=85,
+            )
+
+            # 模拟作业
+            assignment = SimpleNamespace(
+                id="assign-1",
+                title="第一课作业",
+            )
+
+            # 模拟课程
+            course = SimpleNamespace(
+                id="course-1",
+                name="语文",
+                teaching_class_id="class-1",
+            )
+
+            # 模拟班级
+            teaching_class = SimpleNamespace(
+                id="class-1",
+                name="一年级一班",
+            )
+
+            # 设置关系
+            submission.assignment = assignment
+            assignment.course = course
+            course.teaching_class = teaching_class
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                # 模拟数据库查询 - scalars() 不是异步的
+                scalars_result = AsyncMock()
+                scalars_result.all = lambda: [submission]
+
+                result_mock = AsyncMock()
+                result_mock.scalars = lambda: scalars_result
+
+                count_result_mock = AsyncMock()
+                count_result_mock.scalar = lambda: 1
+
+                # 设置 execute 返回不同的结果
+                db_mock.execute = AsyncMock(side_effect=[result_mock, count_result_mock])
+
+                result = await service.get_student_submissions("stu-1", skip=0, limit=20)
+
+                self.assertEqual(result["total"], 1)
+                self.assertEqual(len(result["items"]), 1)
+                self.assertEqual(result["items"][0]["id"], "sub-1")
+                self.assertEqual(result["items"][0]["assignment_title"], "第一课作业")
+                self.assertEqual(result["items"][0]["class_name"], "一年级一班")
+                self.assertEqual(result["items"][0]["status"], "submitted")
+                self.assertEqual(result["items"][0]["score"], 85)
+
+        async def test_get_student_submissions_with_class_id(self):
+            """测试查看指定班级的学生提交列表"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟学生班级关系
+            student_class = SimpleNamespace(
+                id="sc-1",
+                student_id="stu-1",
+                teaching_class_id="class-1",
+                status="active",
+                joined_at=datetime(2026, 4, 15, 10, 0, 0),
+            )
+
+            # 模拟课程
+            course = SimpleNamespace(
+                id="course-1",
+                name="语文",
+                teaching_class_id="class-1",
+            )
+
+            # 模拟作业
+            assignment = SimpleNamespace(
+                id="assign-1",
+                title="第一课作业",
+                course=course,
+            )
+
+            # 模拟提交
+            submission = SimpleNamespace(
+                id="sub-1",
+                assignment_id="assign-1",
+                student_id="stu-1",
+                status="submitted",
+                submitted_at=datetime(2026, 4, 18, 10, 0, 0),
+                score=85,
+            )
+
+            # 模拟班级
+            teaching_class = SimpleNamespace(
+                id="class-1",
+                name="一年级一班",
+            )
+
+            course.teaching_class = teaching_class
+
+            # 设置 mock
+            service.student_class_repo.get_by_student_and_class = AsyncMock(
+                return_value=student_class
+            )
+
+            # 模拟 CourseRepository
+            with patch("app.services.student_class_service.CourseRepository") as mock_course_repo_class:
+                mock_course_repo = AsyncMock()
+                mock_course_repo.list_by_teaching_class = AsyncMock(return_value=[course])
+                mock_course_repo_class.return_value = mock_course_repo
+
+                # 模拟 AssignmentRepository
+                with patch("app.services.student_class_service.AssignmentRepository") as mock_assign_repo_class:
+                    mock_assign_repo = AsyncMock()
+                    mock_assign_repo.get_all = AsyncMock(return_value=[assignment])
+                    mock_assign_repo.count = AsyncMock(return_value=1)
+                    mock_assign_repo_class.return_value = mock_assign_repo
+
+                    # 模拟 SubmissionRepository
+                    with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                        mock_sub_repo = AsyncMock()
+                        mock_sub_repo.get_all_by_assignment = AsyncMock(return_value=[submission])
+                        mock_sub_repo_class.return_value = mock_sub_repo
+
+                        result = await service.get_student_submissions("stu-1", class_id="class-1", skip=0, limit=20)
+
+                        self.assertEqual(result["total"], 1)
+                        self.assertEqual(len(result["items"]), 1)
+                        self.assertEqual(result["items"][0]["id"], "sub-1")
+                        self.assertEqual(result["items"][0]["assignment_title"], "第一课作业")
+                        self.assertEqual(result["items"][0]["class_name"], "一年级一班")
+
+        async def test_get_submission_detail(self):
+            """测试查看提交详情"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟班级
+            teaching_class = SimpleNamespace(
+                id="class-1",
+                name="一年级一班",
+            )
+
+            # 模拟课程
+            course = SimpleNamespace(
+                id="course-1",
+                name="语文",
+                teaching_class_id="class-1",
+                teaching_class=teaching_class,
+            )
+
+            # 模拟作业
+            assignment = SimpleNamespace(
+                id="assign-1",
+                title="第一课作业",
+                course=course,
+            )
+
+            # 模拟提交
+            submission = SimpleNamespace(
+                id="sub-1",
+                assignment_id="assign-1",
+                student_id="stu-1",
+                status="graded",
+                submitted_at=datetime(2026, 4, 18, 10, 0, 0),
+                graded_at=datetime(2026, 4, 19, 10, 0, 0),
+                content="我的答案",
+                score=85,
+                assignment=assignment,
+            )
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=submission)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                result = await service.get_submission_detail("stu-1", "sub-1")
+
+                self.assertEqual(result["id"], "sub-1")
+                self.assertEqual(result["assignment_id"], "assign-1")
+                self.assertEqual(result["assignment_title"], "第一课作业")
+                self.assertEqual(result["class_name"], "一年级一班")
+                self.assertEqual(result["status"], "graded")
+                self.assertEqual(result["content"], "我的答案")
+                self.assertEqual(result["score"], 85)
+                self.assertEqual(result["graded_at"], datetime(2026, 4, 19, 10, 0, 0))
+
+        async def test_get_submission_detail_not_found(self):
+            """测试提交不存在"""
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=None)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                with self.assertRaises(ValueError) as exc:
+                    await service.get_submission_detail("stu-1", "sub-1")
+
+                self.assertIn("提交不存在", str(exc.exception))
+
+        async def test_get_submission_detail_unauthorized(self):
+            """测试无权限访问他人提交"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟提交（属于其他学生）
+            submission = SimpleNamespace(
+                id="sub-1",
+                student_id="stu-2",
+            )
+
+            # 模拟 SubmissionRepository
+            with patch("app.services.student_class_service.SubmissionRepository") as mock_sub_repo_class:
+                mock_sub_repo = AsyncMock()
+                mock_sub_repo.get = AsyncMock(return_value=submission)
+                mock_sub_repo_class.return_value = mock_sub_repo
+
+                with self.assertRaises(ValueError) as exc:
+                    await service.get_submission_detail("stu-1", "sub-1")
+
+                self.assertIn("无权限访问", str(exc.exception))
+
 else:
     @unittest.skip("当前环境缺少 sqlalchemy，跳过学生班级测试")
     class StudentClassServiceTests(unittest.TestCase):
