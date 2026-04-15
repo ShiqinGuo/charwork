@@ -6,6 +6,8 @@ from sqlalchemy.orm import joinedload
 from app.models.student_class import StudentClass
 from app.models.teaching_class import TeachingClass
 from app.models.teacher import Teacher
+from app.models.student import Student
+from app.models.user import User
 
 
 class StudentClassRepository:
@@ -176,3 +178,48 @@ class StudentClassRepository:
             "teaching_class": teaching_class,
             "teacher_name": teacher.name,
         }
+
+    async def list_class_members(
+        self, teaching_class_id: str, skip: int = 0, limit: int = 20
+    ) -> tuple[list[dict], int]:
+        """
+        功能描述：
+            获取班级成员列表，返回成员信息和总数。
+
+        参数：
+            teaching_class_id (str): 班级ID。
+            skip (int): 分页偏移量。
+            limit (int): 单次查询的最大返回数量。
+
+        返回值：
+            tuple[list[dict], int]: 返回包含成员信息的字典列表和总数。
+        """
+        # 获取总数
+        count_result = await self.db.execute(
+            select(func.count()).select_from(StudentClass).where(
+                StudentClass.teaching_class_id == teaching_class_id
+            )
+        )
+        total = int(count_result.scalar() or 0)
+
+        # 获取分页数据
+        result = await self.db.execute(
+            select(Student, StudentClass).where(
+                StudentClass.teaching_class_id == teaching_class_id
+            )
+            .join(Student, StudentClass.student_id == Student.id)
+            .order_by(StudentClass.joined_at.asc())
+            .offset(skip)
+            .limit(limit)
+        )
+        rows = result.all()
+
+        items = [
+            {
+                "id": student.id,
+                "name": student.name,
+                "joined_at": student_class.joined_at,
+            }
+            for student, student_class in rows
+        ]
+        return items, total

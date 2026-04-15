@@ -202,6 +202,70 @@ if SQLALCHEMY_READY:
 
             self.assertIn("学生未加入该班级", str(exc.exception))
 
+        async def test_get_class_members(self):
+            """测试查看班级成员列表"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 模拟学生班级关系
+            student_class = SimpleNamespace(
+                id="sc-1",
+                student_id="stu-1",
+                teaching_class_id="class-1",
+                status="active",
+                joined_at=datetime(2026, 4, 15, 10, 0, 0),
+            )
+
+            # 模拟班级成员
+            member_items = [
+                {
+                    "id": "stu-1",
+                    "name": "学生1",
+                    "joined_at": datetime(2026, 4, 15, 10, 0, 0),
+                },
+                {
+                    "id": "stu-2",
+                    "name": "学生2",
+                    "joined_at": datetime(2026, 4, 15, 11, 0, 0),
+                },
+            ]
+
+            # 设置 mock
+            service.student_class_repo.get_by_student_and_class = AsyncMock(
+                return_value=student_class
+            )
+            service.student_class_repo.list_class_members = AsyncMock(
+                return_value=(member_items, 2)
+            )
+
+            result = await service.get_class_members("stu-1", "class-1", skip=0, limit=20)
+
+            self.assertEqual(result["total"], 2)
+            self.assertEqual(len(result["items"]), 2)
+            self.assertEqual(result["items"][0]["id"], "stu-1")
+            self.assertEqual(result["items"][0]["name"], "学生1")
+            self.assertEqual(result["items"][1]["id"], "stu-2")
+            self.assertEqual(result["items"][1]["name"], "学生2")
+
+        async def test_get_class_members_not_joined(self):
+            """测试查看未加入班级的成员列表"""
+            from types import SimpleNamespace
+
+            db_mock = AsyncMock()
+            service = StudentClassService(db_mock)
+
+            # 设置 mock - 学生未加入班级
+            service.student_class_repo.get_by_student_and_class = AsyncMock(
+                return_value=None
+            )
+
+            with self.assertRaises(ValueError) as exc:
+                await service.get_class_members("stu-1", "class-1")
+
+            self.assertIn("学生未加入该班级", str(exc.exception))
+
 else:
     @unittest.skip("当前环境缺少 sqlalchemy，跳过学生班级测试")
     class StudentClassServiceTests(unittest.TestCase):

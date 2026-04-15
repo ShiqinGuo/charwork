@@ -167,3 +167,39 @@ class StudentClassService:
             "joined_at": student_class.joined_at,
             "status": student_class.status,
         }
+
+    async def get_class_members(
+        self, student_id: str, teaching_class_id: str, skip: int = 0, limit: int = 20
+    ) -> dict:
+        """
+        功能描述：
+            获取班级成员列表。
+
+        参数：
+            student_id (str): 学生ID。
+            teaching_class_id (str): 班级ID。
+            skip (int): 分页偏移量。
+            limit (int): 单次查询的最大返回数量。
+
+        返回值：
+            dict: 返回包含成员列表的字典。
+
+        异常：
+            ValueError: 学生未加入该班级时抛出。
+        """
+        # 验证学生已加入班级
+        student_class = await self.student_class_repo.get_by_student_and_class(
+            student_id, teaching_class_id
+        )
+        if not student_class:
+            raise ValueError("学生未加入该班级")
+
+        # 查询班级成员
+        items, total = await self.student_class_repo.list_class_members(
+            teaching_class_id, skip, limit
+        )
+
+        return {
+            "total": total,
+            "items": items,
+        }

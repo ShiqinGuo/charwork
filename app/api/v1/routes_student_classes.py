@@ -122,3 +122,43 @@ async def get_class_detail(
         elif "班级不存在" in error_msg or "教师不存在" in error_msg:
             raise HTTPException(status_code=404, detail=error_msg)
         raise HTTPException(status_code=400, detail=error_msg)
+
+
+@router.get("/me/classes/{class_id}/members")
+async def get_class_members(
+    class_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    current_student: Student = Depends(get_current_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        查看班级成员列表。
+
+    参数：
+        class_id (str): 班级ID。
+        skip (int): 分页偏移量，默认为 0。
+        limit (int): 单次查询的最大返回数量，默认为 20，最大为 100。
+        current_student (Student): 当前登录的学生。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        dict: 返回班级成员列表字典。
+
+    异常：
+        HTTPException(403): 学生未加入班级。
+        HTTPException(404): 班级不存在。
+    """
+    try:
+        result = await StudentClassService(db).get_class_members(
+            current_student.id, class_id, skip=skip, limit=limit
+        )
+        return result
+    except ValueError as e:
+        error_msg = str(e)
+        if "学生未加入该班级" in error_msg:
+            raise HTTPException(status_code=403, detail=error_msg)
+        elif "班级不存在" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        raise HTTPException(status_code=400, detail=error_msg)
