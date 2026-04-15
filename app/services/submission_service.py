@@ -17,6 +17,7 @@ from app.repositories.event_outbox_repo import EventOutboxRepository
 from app.repositories.submission_repo import SubmissionRepository
 from app.schemas.submission import SubmissionCreate, SubmissionGrade, SubmissionListResponse, SubmissionResponse
 from app.tasks.notification_tasks import send_grade_notification, send_submission_notification, publish_outbox_events
+from app.tasks.ai_feedback_tasks import generate_ai_feedback
 from app.utils.pagination import build_paged_response
 
 
@@ -123,6 +124,7 @@ class SubmissionService:
         await self.repo.commit()
         await self.repo.refresh(submission)
         send_submission_notification.delay(submission.id)
+        generate_ai_feedback.delay(submission.id)
         publish_outbox_events.delay()
         return SubmissionResponse.model_validate(submission)
 
@@ -151,7 +153,7 @@ class SubmissionService:
             return None
         update_data = {
             "score": body.score,
-            "feedback": body.feedback,
+            "teacher_feedback": body.feedback,
             "status": "graded",
             "graded_at": datetime.now(),
         }
@@ -211,3 +213,51 @@ class SubmissionService:
             )
         )
         await self.repo.commit()
+
+    async def get_ai_feedback(self, id: str, management_system_id: str) -> Optional[dict]:
+        """
+        功能描述：
+            获取 AI 生成的评语数据。
+
+        参数：
+            id (str): 目标记录ID。
+            management_system_id (str): 管理系统ID，用于限制数据作用域。
+
+        返回值：
+            Optional[dict]: 返回 ai_feedback 字典；提交不存在时返回 None。
+        """
+        submission = await self.repo.get(id, management_system_id)
+        if not submission:
+            return None
+        return submission.ai_feedback
+
+    async def save_teacher_feedback(
+        self,
+        id: str,
+        teacher_feedback: Optional[str],
+        score: int,
+        management_system_id: str,
+    ) -> Optional[SubmissionResponse]:
+        """
+        功能描述：
+            保存教师独立评语，不覆盖 ai_feedback。
+
+        参数：
+            id (str): 目标记录ID。
+            teacher_feedback (Optional[str]): 教师评语文本。
+            score (int): 教师打分。
+            management_system_id (str): 管理系统ID，用于限制数据作用域。
+
+        返回值：
+            Optional[SubmissionResponse]: 返回更新后的结果对象；不存在时返回 None。
+        """
+        submission = await self.repo.get(id, management_system_id)
+        if not submission:
+            return None
+        updated = await self.repo.update(submission, {
+            "teacher_feedback": teacher_feedback,
+            "score": score,
+            "status": "graded",
+            "graded_at": datetime.now(),
+        })
+        return SubmissionResponse.model_validate(updated)

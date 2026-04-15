@@ -90,3 +90,55 @@ class TestAIFeedbackTask(unittest.TestCase):
                 import asyncio
                 result = asyncio.run(_generate("sub-1"))
                 self.assertEqual(result['status'], 'ok')
+
+
+class TestSubmissionServiceUpdates(unittest.IsolatedAsyncioTestCase):
+    async def test_grade_writes_teacher_feedback(self):
+        from app.services.submission_service import SubmissionService
+        from app.schemas.submission import SubmissionGrade
+        from unittest.mock import MagicMock
+
+        submission = SimpleNamespace(
+            id="sub-1", assignment_id="asg-1", student_id="stu-1",
+            management_system_id="ms-1", status="submitted",
+            score=None, teacher_feedback=None, ai_feedback=None,
+            submitted_at=datetime(2026, 4, 15), graded_at=None,
+            content=None, image_paths=None,
+        )
+        svc = SubmissionService(AsyncMock())
+        svc.repo.get = AsyncMock(return_value=submission)
+        svc.repo.update = AsyncMock(return_value=submission)
+        svc.repo.db = AsyncMock()
+        svc.repo.db.execute = AsyncMock(
+            return_value=AsyncMock(
+                scalars=MagicMock(return_value=MagicMock(first=MagicMock(return_value=None)))
+            )
+        )
+        svc.repo.commit = AsyncMock()
+
+        with patch('app.services.submission_service.send_grade_notification') as mock_task:
+            mock_task.delay = MagicMock()
+            await svc.grade_submission(
+                "sub-1", SubmissionGrade(score=9, feedback="很好"), "ms-1", "teacher-1"
+            )
+
+        update_data = svc.repo.update.call_args[0][1]
+        self.assertIn('teacher_feedback', update_data)
+        self.assertEqual(update_data['teacher_feedback'], "很好")
+
+    async def test_get_ai_feedback_returns_field(self):
+        from app.services.submission_service import SubmissionService
+
+        submission = SimpleNamespace(
+            id="sub-1", assignment_id="asg-1", student_id="stu-1",
+            management_system_id="ms-1", status="submitted",
+            score=None, teacher_feedback=None,
+            ai_feedback={"status": "done", "generated_at": "2026-04-15T10:00:00", "items": []},
+            submitted_at=datetime(2026, 4, 15), graded_at=None,
+            content=None, image_paths=None,
+        )
+        svc = SubmissionService(AsyncMock())
+        svc.repo.get = AsyncMock(return_value=submission)
+
+        result = await svc.get_ai_feedback("sub-1", "ms-1")
+        self.assertEqual(result['status'], 'done')
