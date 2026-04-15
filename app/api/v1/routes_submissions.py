@@ -11,7 +11,10 @@ from app.models.user import User, UserRole
 from app.repositories.assignment_repo import AssignmentRepository
 from app.repositories.course_repo import CourseRepository
 from app.repositories.student_repo import StudentRepository
-from app.schemas.submission import SubmissionCreate, SubmissionGrade, SubmissionListResponse, SubmissionResponse
+from app.schemas.submission import (
+    SubmissionCreate, SubmissionGrade, SubmissionListResponse,
+    SubmissionResponse, TeacherFeedbackUpdate,
+)
 from app.services.submission_service import SubmissionService
 from app.utils.pagination import resolve_pagination
 
@@ -160,6 +163,63 @@ async def grade_submission(
         body,
         scope.management_system_id,
         current_teacher.user_id,
+    )
+    if not submission:
+        raise HTTPException(status_code=404, detail="提交记录不存在")
+    return submission
+
+
+@router.get("/submissions/{id}/ai-feedback")
+async def get_ai_feedback(
+    id: str,
+    scope: ManagementScope = Depends(get_management_scope),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        获取提交记录的 AI 评语，前端可轮询 status 字段判断生成状态。
+
+    参数：
+        id (str): 目标记录ID。
+        scope (ManagementScope): 管理系统作用域对象。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        dict: 返回 ai_feedback 字典。
+    """
+    result = await SubmissionService(db).get_ai_feedback(id, scope.management_system_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="提交记录不存在")
+    return result
+
+
+@router.post("/submissions/{id}/teacher-feedback", response_model=SubmissionResponse)
+async def save_teacher_feedback(
+    id: str,
+    body: TeacherFeedbackUpdate,
+    scope: ManagementScope = Depends(get_management_scope),
+    current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    功能描述：
+        保存教师独立评语，不覆盖 AI 评语。
+
+    参数：
+        id (str): 目标记录ID。
+        body (TeacherFeedbackUpdate): 接口请求体对象。
+        scope (ManagementScope): 管理系统作用域对象。
+        current_teacher (Teacher): 当前登录教师对象。
+        db (AsyncSession): 数据库会话，用于执行持久化操作。
+
+    返回值：
+        SubmissionResponse: 返回更新后的结果对象。
+    """
+    submission = await SubmissionService(db).save_teacher_feedback(
+        id=id,
+        teacher_feedback=body.teacher_feedback,
+        score=body.score,
+        management_system_id=scope.management_system_id,
     )
     if not submission:
         raise HTTPException(status_code=404, detail="提交记录不存在")
