@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.student_class_repo import StudentClassRepository
 from app.repositories.teaching_class_repo import TeachingClassRepository
+from app.repositories.teacher_repo import TeacherRepository
 from app.schemas.student_class import (
     StudentClassResponse,
     StudentClassListResponse,
@@ -27,6 +28,7 @@ class StudentClassService:
         返回值：
             None: 无返回值。
         """
+        self.db = db
         self.student_class_repo = StudentClassRepository(db)
         self.teaching_class_repo = TeachingClassRepository(db)
 
@@ -118,3 +120,50 @@ class StudentClassService:
             if student_class
             else None
         )
+
+    async def get_class_detail(
+        self, student_id: str, teaching_class_id: str
+    ) -> dict:
+        """
+        功能描述：
+            获取班级详情。
+
+        参数：
+            student_id (str): 学生ID。
+            teaching_class_id (str): 班级ID。
+
+        返回值：
+            dict: 返回包含班级详情的字典。
+
+        异常：
+            ValueError: 学生未加入该班级时抛出。
+        """
+        # 验证学生已加入班级
+        student_class = await self.student_class_repo.get_by_student_and_class(
+            student_id, teaching_class_id
+        )
+        if not student_class:
+            raise ValueError("学生未加入该班级")
+
+        # 获取班级信息
+        teaching_class = await self.teaching_class_repo.get(teaching_class_id)
+        if not teaching_class:
+            raise ValueError("班级不存在")
+
+        # 获取教师信息
+        teacher_repo = TeacherRepository(self.db)
+        teacher = await teacher_repo.get(teaching_class.teacher_id)
+        if not teacher:
+            raise ValueError("教师不存在")
+
+        return {
+            "id": teaching_class.id,
+            "name": teaching_class.name,
+            "description": teaching_class.description,
+            "teacher_id": teacher.id,
+            "teacher_name": teacher.name,
+            "member_count": 0,  # TODO: 实现成员计数
+            "assignment_count": 0,  # TODO: 实现作业计数
+            "joined_at": student_class.joined_at,
+            "status": student_class.status,
+        }
