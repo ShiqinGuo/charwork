@@ -168,8 +168,12 @@ class Settings(BaseSettings):
     ARK_BASE_URL: str | None = os.getenv("ARK_BASE_URL")
     ARK_API_KEY: str | None = os.getenv("ARK_API_KEY")
     ARK_MODEL: str | None = os.getenv("ARK_MODEL")
+    # 视觉模型，用于手写体评语生成（需支持图片输入）
+    ARK_VISION_MODEL: str | None = os.getenv("ARK_VISION_MODEL")
     AI_SHORT_MEMORY_TURNS: int = 12       # AI 对话短期记忆保留的轮数
     AI_LONG_MEMORY_FACT_LIMIT: int = 200  # AI 对话长期记忆最大事实条数
+    # 前端基础地址，用于 AI 搜索结果拼接完整跳转 URL
+    FRONTEND_BASE_URL: str = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
 
     VOLCENGINE_ACCESS_KEY_ID: str | None = os.getenv("VOLCENGINE_ACCESS_KEY_ID")
     VOLCENGINE_SECRET_ACCESS_KEY: str | None = os.getenv("VOLCENGINE_SECRET_ACCESS_KEY")
