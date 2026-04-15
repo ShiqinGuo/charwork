@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from enum import Enum
@@ -20,7 +20,13 @@ class SubmissionCreate(SubmissionBase):
 
 class SubmissionGrade(BaseModel):
     score: int
+    # feedback 参数名保留，语义对应 teacher_feedback 列
     feedback: Optional[str] = None
+
+
+class TeacherFeedbackUpdate(BaseModel):
+    teacher_feedback: Optional[str] = None
+    score: int
 
 
 class SubmissionResponse(SubmissionBase):
@@ -30,7 +36,8 @@ class SubmissionResponse(SubmissionBase):
     management_system_id: Optional[str] = None
     status: SubmissionStatus
     score: Optional[int] = None
-    feedback: Optional[str] = None
+    teacher_feedback: Optional[str] = None
+    ai_feedback: Optional[Any] = None
     submitted_at: datetime
     graded_at: Optional[datetime] = None
 
