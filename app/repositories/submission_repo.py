@@ -1,6 +1,7 @@
 from typing import Optional, List
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from app.models.submission import Submission
 from app.schemas.submission import SubmissionCreate
@@ -35,6 +36,7 @@ class SubmissionRepository:
         query = select(Submission).where(Submission.id == id)
         if management_system_id:
             query = query.where(Submission.management_system_id == management_system_id)
+        query = query.options(joinedload(Submission.attachments))
         result = await self.db.execute(query)
         return result.scalars().first()
 
@@ -65,10 +67,11 @@ class SubmissionRepository:
             query = query.where(Submission.management_system_id == management_system_id)
         if student_id:
             query = query.where(Submission.student_id == student_id)
+        query = query.options(joinedload(Submission.attachments))
         result = await self.db.execute(
             query.order_by(desc(Submission.submitted_at)).offset(skip).limit(limit)
         )
-        return result.scalars().all()
+        return result.scalars().unique().all()
 
     async def count_by_assignment(
         self,
@@ -97,6 +100,36 @@ class SubmissionRepository:
             query
         )
         return result.scalar()
+
+    async def get_latest_by_assignment_student(
+        self,
+        assignment_id: str,
+        student_id: str,
+        management_system_id: Optional[str] = None,
+    ) -> Optional[Submission]:
+        """
+        功能描述：
+            获取学生在指定作业下的最新提交记录。
+
+        参数：
+            assignment_id (str): 作业ID。
+            student_id (str): 学生ID。
+            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
+
+        返回值：
+            Optional[Submission]: 返回最新提交记录；未命中时返回 None。
+        """
+        query = select(Submission).where(
+            Submission.assignment_id == assignment_id,
+            Submission.student_id == student_id,
+        )
+        if management_system_id:
+            query = query.where(Submission.management_system_id == management_system_id)
+        query = query.options(joinedload(Submission.attachments))
+        result = await self.db.execute(
+            query.order_by(desc(Submission.submitted_at), desc(Submission.id)).limit(1)
+        )
+        return result.scalars().first()
 
     async def create(self, assignment_id: str, submission_in: SubmissionCreate,
                      management_system_id: str) -> Submission:
@@ -137,7 +170,6 @@ class SubmissionRepository:
             student_id=submission_in.student_id,
             management_system_id=management_system_id,
             content=submission_in.content,
-            image_paths=submission_in.image_paths,
         )
         return submission
 
@@ -184,3 +216,87 @@ class SubmissionRepository:
             None: 无返回值。
         """
         await self.db.refresh(submission)
+
+    async def get_all_by_teacher(
+        self,
+        teacher_id: str,
+        skip: int = 0,
+        limit: int = 20,
+        management_system_id: Optional[str] = None,
+        status: Optional[str] = None,
+        assignment_id: Optional[str] = None,
+    ) -> List[Submission]:
+        """
+        功能描述：
+            获取教师所有提交记录。
+
+        参数：
+            teacher_id (str): 教师ID。
+            skip (int): 分页偏移量。
+            limit (int): 单次查询的最大返回数量。
+            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
+            status (Optional[str]): 提交状态筛选。
+            assignment_id (Optional[str]): 作业ID筛选。
+
+        返回值：
+            List[Submission]: 返回查询到的结果对象。
+        """
+        from app.models.assignment import Assignment
+
+        query = (
+            select(Submission)
+            .join(Assignment, Submission.assignment_id == Assignment.id)
+            .where(Assignment.teacher_id == teacher_id)
+            .options(
+                joinedload(Submission.student),
+                joinedload(Submission.assignment),
+                joinedload(Submission.attachments),
+            )
+        )
+        if management_system_id:
+            query = query.where(Submission.management_system_id == management_system_id)
+        if status:
+            query = query.where(Submission.status == status)
+        if assignment_id:
+            query = query.where(Submission.assignment_id == assignment_id)
+        result = await self.db.execute(
+            query.order_by(desc(Submission.submitted_at)).offset(skip).limit(limit)
+        )
+        return result.scalars().unique().all()
+
+    async def count_by_teacher(
+        self,
+        teacher_id: str,
+        management_system_id: Optional[str] = None,
+        status: Optional[str] = None,
+        assignment_id: Optional[str] = None,
+    ) -> int:
+        """
+        功能描述：
+            统计教师提交数量。
+
+        参数：
+            teacher_id (str): 教师ID。
+            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
+            status (Optional[str]): 提交状态筛选。
+            assignment_id (Optional[str]): 作业ID筛选。
+
+        返回值：
+            int: 返回统计结果。
+        """
+        from app.models.assignment import Assignment
+
+        query = (
+            select(func.count())
+            .select_from(Submission)
+            .join(Assignment, Submission.assignment_id == Assignment.id)
+            .where(Assignment.teacher_id == teacher_id)
+        )
+        if management_system_id:
+            query = query.where(Submission.management_system_id == management_system_id)
+        if status:
+            query = query.where(Submission.status == status)
+        if assignment_id:
+            query = query.where(Submission.assignment_id == assignment_id)
+        result = await self.db.execute(query)
+        return result.scalar()
