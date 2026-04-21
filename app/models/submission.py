@@ -29,7 +29,6 @@ class Submission(Base):
     )
 
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_paths: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)  # 临时保留用于迁移
 
     status: Mapped[SubmissionStatus] = mapped_column(String(20), default=SubmissionStatus.SUBMITTED)
     score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
