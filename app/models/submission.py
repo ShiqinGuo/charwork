@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from enum import Enum as PyEnum
-from sqlalchemy import String, Integer, Text, DateTime, func, JSON, ForeignKey, and_
+from sqlalchemy import String, Integer, Text, DateTime, func, JSON, ForeignKey, and_, foreign
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -43,8 +43,8 @@ class Submission(Base):
     student: Mapped["Student"] = relationship("Student", back_populates="submissions")  # noqa
     attachments: Mapped[List["Attachment"]] = relationship(
         "Attachment",
-        foreign_keys="and_(Attachment.owner_type=='submission', Attachment.owner_id==Submission.id)",
-        primaryjoin="and_(Attachment.owner_type=='submission', Attachment.owner_id==Submission.id)",
+        foreign_keys="[foreign(Attachment.owner_id)]",
+        primaryjoin="and_(Attachment.owner_type=='submission', foreign(Attachment.owner_id)==Submission.id)",
         viewonly=True,
     )
 
