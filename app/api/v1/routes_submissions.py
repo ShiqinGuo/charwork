@@ -16,7 +16,6 @@ from app.schemas.submission import (
     SubmissionResponse, TeacherFeedbackUpdate, AIFeedbackResponse,
 )
 from app.services.submission_service import SubmissionService
-from app.services.attachment_service import AttachmentService
 from app.utils.pagination import resolve_pagination
 
 

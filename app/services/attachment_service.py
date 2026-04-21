@@ -5,7 +5,7 @@
 """
 
 import os
-from typing import List, Optional
+from typing import List
 from fastapi import UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
