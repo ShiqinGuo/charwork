@@ -5,19 +5,33 @@
 
 from datetime import datetime
 import json
+import os
+from pathlib import Path
 from typing import Optional
 
+from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.assignment import Assignment
 from app.models.message import Message
 from app.models.student import Student
+from app.models.submission import SubmissionStatus
 from app.repositories.event_outbox_repo import EventOutboxRepository
 from app.repositories.submission_repo import SubmissionRepository
-from app.schemas.submission import SubmissionCreate, SubmissionGrade, SubmissionListResponse, SubmissionResponse
+from app.schemas.submission import (
+    SubmissionCreate,
+    SubmissionGrade,
+    SubmissionListResponse,
+    SubmissionResponse,
+    SubmissionTransitionEvent,
+)
+from app.services.ocr_service import OCRService
+from app.services.submission_state_machine import SubmissionStateMachine
 from app.tasks.notification_tasks import send_grade_notification, send_submission_notification, publish_outbox_events
 from app.tasks.ai_feedback_tasks import generate_ai_feedback
+from app.utils.file_utils import save_upload_file
 from app.utils.pagination import build_paged_response
 
 
@@ -35,6 +49,46 @@ class SubmissionService:
         """
         self.repo = SubmissionRepository(db)
         self.outbox_repo = EventOutboxRepository(db)
+        self.ocr_service = OCRService()
+        self.state_machine = SubmissionStateMachine()
+
+    async def upload_submission_images(
+        self,
+        files: list[UploadFile],
+        management_system_id: str,
+    ) -> list[str]:
+        """
+        功能描述：
+            上传作业图片并返回附件ID列表。
+
+        参数：
+            files (list[UploadFile]): 学生提交的图片文件列表。
+            management_system_id (str): 管理系统ID，用于隔离临时文件目录。
+
+        返回值：
+            list[str]: 返回上传成功后的附件ID列表。
+        """
+        if not files:
+            return []
+
+        from app.services.attachment_service import AttachmentService
+        attachment_service = AttachmentService(self.repo.db)
+
+        attachment_ids: list[str] = []
+        for upload_file in files:
+            if not upload_file.filename:
+                raise ValueError("上传图片缺少文件名")
+            try:
+                attachment = await attachment_service.upload_attachment(
+                    file=upload_file,
+                    owner_type="submission",
+                    owner_id="temp",
+                    management_system_id=management_system_id,
+                )
+                attachment_ids.append(attachment.id)
+            except Exception as e:
+                raise ValueError(f"上传图片失败: {str(e)}")
+        return attachment_ids
 
     async def get_submission(self, id: str, management_system_id: str) -> Optional[SubmissionResponse]:
         """
@@ -49,6 +103,31 @@ class SubmissionService:
             Optional[SubmissionResponse]: 返回查询到的结果对象；未命中时返回 None。
         """
         submission = await self.repo.get(id, management_system_id)
+        return SubmissionResponse.model_validate(submission) if submission else None
+
+    async def get_latest_submission_for_student(
+        self,
+        assignment_id: str,
+        student_id: str,
+        management_system_id: str,
+    ) -> Optional[SubmissionResponse]:
+        """
+        功能描述：
+            获取学生在指定作业下的最新提交记录。
+
+        参数：
+            assignment_id (str): 作业ID。
+            student_id (str): 学生ID。
+            management_system_id (str): 管理系统ID，用于限制数据作用域。
+
+        返回值：
+            Optional[SubmissionResponse]: 返回最新提交记录；未命中时返回 None。
+        """
+        submission = await self.repo.get_latest_by_assignment_student(
+            assignment_id=assignment_id,
+            student_id=student_id,
+            management_system_id=management_system_id,
+        )
         return SubmissionResponse.model_validate(submission) if submission else None
 
     async def list_submissions_by_assignment(
@@ -107,6 +186,19 @@ class SubmissionService:
         submission = self.repo.build_submission(assignment_id, submission_in, management_system_id)
         self.repo.db.add(submission)
         await self.repo.db.flush()
+
+        # 关联附件
+        if submission_in.attachment_ids:
+            from app.repositories.attachment_repo import AttachmentRepository
+            attachment_repo = AttachmentRepository(self.repo.db)
+            for attachment_id in submission_in.attachment_ids:
+                attachment = await attachment_repo.get(attachment_id, management_system_id)
+                if not attachment:
+                    raise ValueError(f"Attachment not found: {attachment_id}")
+                # 更新附件的owner_id
+                attachment.owner_id = submission.id
+                self.repo.db.add(attachment)
+
         payload = json.dumps(
             {
                 "submission_id": submission.id,
@@ -123,10 +215,70 @@ class SubmissionService:
         )
         await self.repo.commit()
         await self.repo.refresh(submission)
-        send_submission_notification.delay(submission.id)
-        generate_ai_feedback.delay(submission.id)
-        publish_outbox_events.delay()
+        self._schedule_submission_followups(submission.id, publish_outbox=True)
         return SubmissionResponse.model_validate(submission)
+
+    async def update_submission(
+        self,
+        id: str,
+        submission_in: SubmissionCreate,
+        management_system_id: str,
+    ) -> Optional[SubmissionResponse]:
+        """
+        功能描述：
+            更新提交记录并重置为重新提交状态。
+
+        参数：
+            id (str): 目标记录ID。
+            submission_in (SubmissionCreate): 提交记录输入对象。
+            management_system_id (str): 管理系统ID，用于限制数据作用域。
+
+        返回值：
+            Optional[SubmissionResponse]: 返回更新后的结果对象；未命中时返回 None。
+        """
+        submission = await self.repo.get(id, management_system_id)
+        if not submission:
+            return None
+        transition_result = self.state_machine.transition(
+            SubmissionStatus(submission.status),
+            SubmissionTransitionEvent.RESUBMIT,
+        )
+        update_data = self._build_resubmission_payload(
+            submission_in=submission_in,
+            next_status=transition_result.to_status,
+        )
+
+        # 处理附件
+        if submission_in.attachment_ids:
+            from app.repositories.attachment_repo import AttachmentRepository
+            attachment_repo = AttachmentRepository(self.repo.db)
+
+            # 获取当前附件
+            current_attachments = await attachment_repo.get_by_owner(
+                owner_type="submission",
+                owner_id=id,
+                management_system_id=management_system_id,
+            )
+            current_ids = {a.id for a in current_attachments}
+            new_ids = set(submission_in.attachment_ids)
+
+            # 删除不在新列表中的附件
+            for attachment in current_attachments:
+                if attachment.id not in new_ids:
+                    await attachment_repo.soft_delete(attachment)
+
+            # 添加新附件
+            for attachment_id in new_ids:
+                if attachment_id not in current_ids:
+                    attachment = await attachment_repo.get(attachment_id, management_system_id)
+                    if not attachment:
+                        raise ValueError(f"Attachment not found: {attachment_id}")
+                    attachment.owner_id = id
+                    self.repo.db.add(attachment)
+
+        updated_submission = await self.repo.update(submission, update_data)
+        self._schedule_submission_followups(updated_submission.id)
+        return SubmissionResponse.model_validate(updated_submission)
 
     async def grade_submission(
         self,
@@ -151,10 +303,14 @@ class SubmissionService:
         submission = await self.repo.get(id, management_system_id)
         if not submission:
             return None
+        transition_result = self.state_machine.transition(
+            SubmissionStatus(submission.status),
+            SubmissionTransitionEvent.GRADE,
+        )
         update_data = {
             "score": body.score,
             "teacher_feedback": body.feedback,
-            "status": "graded",
+            "status": transition_result.to_status,
             "graded_at": datetime.now(),
         }
         submission = await self.repo.update(submission, update_data)
@@ -254,13 +410,136 @@ class SubmissionService:
         submission = await self.repo.get(id, management_system_id)
         if not submission:
             return None
+        transition_result = self.state_machine.transition(
+            SubmissionStatus(submission.status),
+            SubmissionTransitionEvent.GRADE,
+        )
         # graded_at 只在首次批改时写入，避免教师多次修改评语时时间戳被刷新
         update_payload: dict = {
             "teacher_feedback": teacher_feedback,
             "score": score,
-            "status": "graded",
+            "status": transition_result.to_status,
         }
         if not submission.graded_at:
             update_payload["graded_at"] = datetime.now()
         updated = await self.repo.update(submission, update_payload)
         return SubmissionResponse.model_validate(updated)
+
+    @staticmethod
+    def validate_retained_image_paths(
+        current_image_paths: Optional[list[str]],
+        retained_image_paths: Optional[list[str]],
+    ) -> list[str]:
+        """
+        功能描述：
+            校验修改接口中保留的图片路径必须来自当前提交记录。
+
+        参数：
+            current_image_paths (Optional[list[str]]): 当前已保存的图片地址列表。
+            retained_image_paths (Optional[list[str]]): 本次修改后希望保留的图片地址列表。
+
+        返回值：
+            list[str]: 返回通过校验的保留图片地址列表。
+        """
+        current_set = set(current_image_paths or [])
+        next_paths = retained_image_paths or []
+        invalid_paths = [path for path in next_paths if path not in current_set]
+        if invalid_paths:
+            raise ValueError("仅可保留当前提交中已存在的附件")
+        return next_paths
+
+    @staticmethod
+    def _build_resubmission_payload(
+        submission_in: SubmissionCreate,
+        next_status: SubmissionStatus,
+    ) -> dict:
+        """
+        功能描述：
+            构建学生修改提交后的更新载荷。
+
+        参数：
+            submission_in (SubmissionCreate): 提交记录输入对象。
+            next_status (SubmissionStatus): 重新提交后的目标状态。
+
+        返回值：
+            dict: 返回更新字段字典。
+        """
+        return {
+            "content": submission_in.content,
+            "status": next_status,
+            "score": None,
+            "teacher_feedback": None,
+            "ai_feedback": None,
+            "graded_at": None,
+            "submitted_at": datetime.now(),
+        }
+
+    @staticmethod
+    def _schedule_submission_followups(
+        submission_id: str,
+        publish_outbox: bool = False,
+    ) -> None:
+        """
+        功能描述：
+            统一调度提交后的通知与 AI 异步任务。
+
+        参数：
+            submission_id (str): 提交记录ID。
+            publish_outbox (bool): 是否触发 outbox 发布任务。
+
+        返回值：
+            None: 无返回值。
+        """
+        send_submission_notification.delay(submission_id)
+        generate_ai_feedback.delay(submission_id)
+        if publish_outbox:
+            publish_outbox_events.delay()
+
+    async def list_submissions_by_teacher(
+        self,
+        teacher_id: str,
+        management_system_id: str,
+        status: Optional[str] = None,
+        assignment_id: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 20,
+        page: Optional[int] = None,
+        size: Optional[int] = None,
+    ) -> SubmissionListResponse:
+        """
+        功能描述：
+            获取教师所有提交记录列表。
+
+        参数：
+            teacher_id (str): 教师ID。
+            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            status (Optional[str]): 提交状态筛选。
+            assignment_id (Optional[str]): 作业ID筛选。
+            skip (int): 分页偏移量。
+            limit (int): 单次查询的最大返回数量。
+            page (Optional[int]): 当前页码。
+            size (Optional[int]): 每页条数。
+
+        返回值：
+            SubmissionListResponse: 返回列表或分页查询结果。
+        """
+        items = await self.repo.get_all_by_teacher(
+            teacher_id=teacher_id,
+            skip=skip,
+            limit=limit,
+            management_system_id=management_system_id,
+            status=status,
+            assignment_id=assignment_id,
+        )
+        total = await self.repo.count_by_teacher(
+            teacher_id=teacher_id,
+            management_system_id=management_system_id,
+            status=status,
+            assignment_id=assignment_id,
+        )
+        payload = build_paged_response(
+            items=[SubmissionResponse.model_validate(i) for i in items],
+            total=total,
+            pagination={"page": page, "size": size, "skip": skip, "limit": limit},
+        )
+        return SubmissionListResponse(**payload)
