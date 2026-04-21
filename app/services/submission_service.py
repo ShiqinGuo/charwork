@@ -5,15 +5,12 @@
 
 from datetime import datetime
 import json
-import os
-from pathlib import Path
 from typing import Optional
 
 from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.assignment import Assignment
 from app.models.message import Message
 from app.models.student import Student
@@ -27,11 +24,9 @@ from app.schemas.submission import (
     SubmissionResponse,
     SubmissionTransitionEvent,
 )
-from app.services.ocr_service import OCRService
 from app.services.submission_state_machine import SubmissionStateMachine
 from app.tasks.notification_tasks import send_grade_notification, send_submission_notification, publish_outbox_events
 from app.tasks.ai_feedback_tasks import generate_ai_feedback
-from app.utils.file_utils import save_upload_file
 from app.utils.pagination import build_paged_response
 
 
@@ -49,7 +44,6 @@ class SubmissionService:
         """
         self.repo = SubmissionRepository(db)
         self.outbox_repo = EventOutboxRepository(db)
-        self.ocr_service = OCRService()
         self.state_machine = SubmissionStateMachine()
 
     async def upload_submission_images(
@@ -424,29 +418,6 @@ class SubmissionService:
             update_payload["graded_at"] = datetime.now()
         updated = await self.repo.update(submission, update_payload)
         return SubmissionResponse.model_validate(updated)
-
-    @staticmethod
-    def validate_retained_image_paths(
-        current_image_paths: Optional[list[str]],
-        retained_image_paths: Optional[list[str]],
-    ) -> list[str]:
-        """
-        功能描述：
-            校验修改接口中保留的图片路径必须来自当前提交记录。
-
-        参数：
-            current_image_paths (Optional[list[str]]): 当前已保存的图片地址列表。
-            retained_image_paths (Optional[list[str]]): 本次修改后希望保留的图片地址列表。
-
-        返回值：
-            list[str]: 返回通过校验的保留图片地址列表。
-        """
-        current_set = set(current_image_paths or [])
-        next_paths = retained_image_paths or []
-        invalid_paths = [path for path in next_paths if path not in current_set]
-        if invalid_paths:
-            raise ValueError("仅可保留当前提交中已存在的附件")
-        return next_paths
 
     @staticmethod
     def _build_resubmission_payload(
