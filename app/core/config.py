@@ -203,3 +203,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# 附件所有者类型配置
+ATTACHMENT_OWNER_TYPES = {
+    "submission": {
+        "model": "Submission",
+        "description": "作业提交"
+    },
+    "assignment": {
+        "model": "Assignment",
+        "description": "作业描述"
+    },
+    "comment": {
+        "model": "Comment",
+        "description": "评论"
+    }
+}
