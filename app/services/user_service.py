@@ -33,7 +33,7 @@ class UserService:
     async def register(
         self, *, username: str, email: str,
         password: str, role: str, name: str,
-        department: Optional[str], class_name: Optional[str]
+        department: Optional[str]
     ) -> User:
         """
         功能描述：
@@ -46,7 +46,6 @@ class UserService:
             role (str): 角色信息。
             name (str): 字符串结果。
             department (Optional[str]): 字符串结果。
-            class_name (Optional[str]): 字符串结果。
 
         返回值：
             User: 返回User类型的处理结果。
@@ -74,7 +73,8 @@ class UserService:
                 teacher = Teacher(user_id=user.id, name=name, department=department)
                 self.db.add(teacher)
             else:
-                student = Student(user_id=user.id, name=name, class_name=class_name)
+                # 学生班级通过教师侧或加入班级流程维护，避免注册阶段写入脏数据。
+                student = Student(user_id=user.id, name=name, class_name=None)
                 self.db.add(student)
 
             await ManagementSystemService(self.db).ensure_default_system_entity(user, commit=False)

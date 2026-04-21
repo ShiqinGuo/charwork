@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from enum import Enum as PyEnum
-from sqlalchemy import String, Integer, Text, DateTime, func, JSON, ForeignKey, and_
-from sqlalchemy.orm import Mapped, mapped_column, relationship, foreign
+from sqlalchemy import String, Integer, Text, DateTime, func, JSON, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.utils.id_generator import generate_id

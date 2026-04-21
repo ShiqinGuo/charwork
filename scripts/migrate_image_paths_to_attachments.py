@@ -8,6 +8,10 @@
     python scripts/migrate_image_paths_to_attachments.py
 """
 
+from app.utils.id_generator import generate_id
+from app.models.attachment import Attachment
+from app.models.submission import Submission
+from app.core.config import settings
 import asyncio
 import sys
 from pathlib import Path
@@ -19,11 +23,6 @@ from sqlalchemy import select
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
-from app.core.config import settings
-from app.models.submission import Submission
-from app.models.attachment import Attachment
-from app.utils.id_generator import generate_id
 
 
 async def migrate_image_paths() -> None:

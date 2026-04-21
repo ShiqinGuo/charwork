@@ -71,6 +71,10 @@ class OCRService:
             digest = md5(f.read()).hexdigest()
         return f"ocr/{digest}{ext}"
 
+    @staticmethod
+    def _is_remote_url(image_path: str) -> bool:
+        return image_path.startswith(("http://", "https://"))
+
     def _upload_image(self, image_path: str, store_key: Optional[str] = None) -> dict[str, Any]:
         """
         功能描述：
@@ -88,7 +92,7 @@ class OCRService:
         if not self.volcengine_service_id:
             raise ValueError("缺少 ImageX 服务编号，请配置 IMAGEX_SERVICE_ID")
 
-        store_key = self._default_store_key(image_path)
+        store_key = store_key or self._default_store_key(image_path)
         params = {
             "ServiceId": self.volcengine_service_id,
             "StoreKeys": [store_key],
@@ -220,7 +224,7 @@ class OCRService:
             raise ValueError("缺少火山引擎图片上传凭证，请检查相关配置")
 
         def _work() -> str | list[str]:
-            # 上传图片到火山，获取公网URL
+            # 本地文件先上传换公网 URL；已是 URL 的图片直接复用，兼容提交作业后的异步识别链路。
             """
             功能描述：
                 处理OCRService。
@@ -231,16 +235,55 @@ class OCRService:
             返回值：
                 str | list[str]: 返回str | list[str]类型的处理结果。
             """
-            upload_res = self._upload_image(image_path)
-            uri = upload_res.get("URI", "")
-            image_url = self._transform_uri2url(uri)
-            if not image_url:
-                raise ValueError("图片URL生成失败，请检查火山引擎配置")
+            if self._is_remote_url(image_path):
+                image_url = image_path
+            else:
+                upload_res = self._upload_image(image_path)
+                uri = upload_res.get("URI", "")
+                image_url = self._transform_uri2url(uri)
+                if not image_url:
+                    raise ValueError("图片URL生成失败，请检查火山引擎配置")
 
             # 调用百度OCR识别
             ocr_result = self._ai_process_ocr(image_url)
             # 提取文本结果
             return self._extract_text(ocr_result)
+
+        return await run_in_threadpool(_work)
+
+    async def upload_image(self, image_path: str, store_key: Optional[str] = None) -> dict[str, Any]:
+        """
+        功能描述：
+            上传单张图片并返回公网访问地址。
+
+        参数：
+            image_path (str): 本地图片路径。
+            store_key (Optional[str]): 对象存储中的文件键。
+
+        返回值：
+            dict[str, Any]: 返回上传后的 URI、对象键与公网 URL。
+        """
+        if not self.volcengine_service_id or not self.volcengine_access_key or not self.volcengine_secret_key:
+            raise ValueError("缺少火山引擎图片上传凭证，请检查相关配置")
+
+        if self._is_remote_url(image_path):
+            return {
+                "uri": image_path,
+                "store_key": store_key,
+                "image_url": image_path
+            }
+
+        def _work() -> dict[str, Any]:
+            upload_res = self._upload_image(image_path, store_key)
+            uri = upload_res.get("URI", "")
+            image_url = self._transform_uri2url(uri)
+            if not image_url:
+                raise ValueError("图片URL生成失败，请检查火山引擎配置")
+            return {
+                "uri": uri,
+                "store_key": upload_res.get("StoreKey", ""),
+                "image_url": image_url,
+            }
 
         return await run_in_threadpool(_work)
 

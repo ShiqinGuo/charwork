@@ -34,7 +34,6 @@ async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
             role=body.role,
             name=body.name,
             department=body.department,
-            class_name=body.class_name,
         )
         return {"id": user.id, "username": user.username, "role": user.role}
     except ValueError as e:

@@ -7,7 +7,6 @@ from app.models.student_class import StudentClass
 from app.models.teaching_class import TeachingClass
 from app.models.teacher import Teacher
 from app.models.student import Student
-from app.models.user import User
 
 
 class StudentClassRepository:
@@ -83,15 +82,30 @@ class StudentClassRepository:
         )
         total = int(count_result.scalar() or 0)
 
-        # 获取分页数据
+        # 获取分页数据，预加载关联的班级和教师信息
         result = await self.db.execute(
             select(StudentClass)
+            .options(
+                joinedload(StudentClass.teaching_class)
+                .joinedload(TeachingClass.teacher)
+            )
             .where(StudentClass.student_id == student_id)
             .order_by(StudentClass.created_at.desc())
             .offset(skip)
             .limit(limit)
         )
         items = result.scalars().all()
+
+        # 为每个班级计算学生人数
+        for item in items:
+            if item.teaching_class:
+                # 查询班级学生人数
+                count_query = select(func.count()).select_from(StudentClass).where(
+                    StudentClass.teaching_class_id == item.teaching_class_id
+                )
+                count_result = await self.db.execute(count_query)
+                item.teaching_class.student_count = count_result.scalar() or 0
+
         return items, total
 
     async def create(self, student_id: str, teaching_class_id: str) -> StudentClass:

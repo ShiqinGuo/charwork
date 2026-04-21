@@ -101,7 +101,6 @@ class AIFeedbackService:
             return ""
 
     async def _call_vision_model(self, image_path: str, char: str) -> Dict[str, Any]:
-        b64 = _encode_image(image_path)
         char_label = char if char else "（字符未识别）"
         prompt = _PROMPT_TEMPLATE.format(char=char_label)
         response = await self._get_ark_client().chat.completions.create(
@@ -109,7 +108,7 @@ class AIFeedbackService:
             messages=[{
                 "role": "user",
                 "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                    {"type": "image_url", "image_url": {"url": _build_vision_image_url(image_path)}},
                     {"type": "text", "text": prompt},
                 ],
             }],
@@ -122,6 +121,12 @@ class AIFeedbackService:
 def _encode_image(image_path: str) -> str:
     with open(image_path, "rb") as f:
         return base64.b64encode(f.read()).decode("utf-8")
+
+
+def _build_vision_image_url(image_path: str) -> str:
+    if image_path.startswith(("http://", "https://")):
+        return image_path
+    return f"data:image/jpeg;base64,{_encode_image(image_path)}"
 
 
 def _parse_json_response(raw: str) -> Dict[str, Any]:

@@ -9,7 +9,6 @@ class RegisterRequest(BaseModel):
     role: Literal["teacher", "student"]
     name: str
     department: Optional[str] = None
-    class_name: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
