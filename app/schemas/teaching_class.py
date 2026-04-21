@@ -36,7 +36,6 @@ class TeachingClassCreate(TeachingClassBase):
 
 class TeachingClassResponse(TeachingClassBase):
     id: str
-    management_system_id: str
     teacher_id: str
     is_default: bool
     member_count: int = 0

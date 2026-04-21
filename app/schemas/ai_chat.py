@@ -7,7 +7,6 @@ class AIChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: Optional[str] = None
     student_id: Optional[str] = None
-    management_system_id: Optional[str] = None
     recent_days: int = Field(default=30, ge=1, le=365)
     assignment_limit: int = Field(default=5, ge=1, le=20)
 
@@ -31,7 +30,6 @@ class AIChatStreamEvent(BaseModel):
 class AIChatConversation(BaseModel):
     conversation_id: str
     title: str
-    management_system_id: Optional[str] = None
     created_at: str
     updated_at: str
 

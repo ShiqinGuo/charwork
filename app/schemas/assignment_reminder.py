@@ -39,7 +39,6 @@ class AssignmentReminderPlanResponse(AssignmentReminderPlanBase):
     id: str
     assignment_id: str
     course_id: Optional[str] = None
-    management_system_id: str
     created_by_user_id: str
     status: AssignmentReminderPlanStatus
     created_at: datetime
@@ -68,7 +67,6 @@ class AssignmentReminderExecutionCreate(BaseModel):
 class AssignmentReminderExecutionResponse(AssignmentReminderExecutionCreate):
     id: str
     assignment_id: str
-    management_system_id: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

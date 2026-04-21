@@ -5,15 +5,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_teacher, get_current_user
 from app.core.database import get_db
-from app.core.management_scope import ManagementScope, get_management_scope
 from app.models.teacher import Teacher
 from app.models.user import User, UserRole
 from app.repositories.assignment_repo import AssignmentRepository
 from app.repositories.course_repo import CourseRepository
 from app.repositories.student_repo import StudentRepository
+from app.schemas.ai_feedback import (
+    AttachmentAIFeedbackListResponse,
+    SubmissionAISummaryResponse,
+    SubmissionAISummaryTriggerResponse,
+)
 from app.schemas.submission import (
     SubmissionCreate, SubmissionGrade, SubmissionListResponse,
-    SubmissionResponse, TeacherFeedbackUpdate, AIFeedbackResponse,
+    SubmissionResponse, TeacherFeedbackUpdate,
 )
 from app.services.submission_service import SubmissionService
 from app.utils.pagination import resolve_pagination
@@ -51,7 +55,6 @@ async def list_teacher_submissions(
     size: Optional[int] = Query(None, ge=1, le=100),
     status: Optional[str] = Query(None, description="提交状态筛选: submitted, graded"),
     assignment_id: Optional[str] = Query(None, description="作业ID筛选"),
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -66,7 +69,6 @@ async def list_teacher_submissions(
         size (Optional[int]): 每页条数。
         status (Optional[str]): 提交状态筛选。
         assignment_id (Optional[str]): 作业ID筛选。
-        scope (ManagementScope): 管理系统作用域对象。
         current_teacher (Teacher): 当前登录教师对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
@@ -76,7 +78,6 @@ async def list_teacher_submissions(
     pagination = resolve_pagination(page=page, size=size, skip=skip, limit=limit)
     return await SubmissionService(db).list_submissions_by_teacher(
         teacher_id=current_teacher.id,
-        management_system_id=scope.management_system_id,
         status=status,
         assignment_id=assignment_id,
         skip=pagination["skip"],
@@ -92,7 +93,6 @@ async def create_submission(
     content: Optional[str] = Form(None),
     student_id: Optional[str] = Form(None),
     files: Optional[list[UploadFile]] = File(None),
-    scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -103,7 +103,6 @@ async def create_submission(
     参数：
         assignment_id (str): 作业ID。
         body (SubmissionCreate): 接口请求体对象。
-        scope (ManagementScope): 管理系统作用域对象。
         current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
@@ -111,7 +110,7 @@ async def create_submission(
         None: 无返回值。
     """
     service = SubmissionService(db)
-    assignment = await AssignmentRepository(db).get(assignment_id, scope.management_system_id)
+    assignment = await AssignmentRepository(db).get(assignment_id)
     if not assignment:
         raise HTTPException(status_code=404, detail="作业不存在")
     body = SubmissionCreate(
@@ -123,7 +122,6 @@ async def create_submission(
         current_student_id = await _get_current_student_id_or_404(current_user, db)
         accessible_course_ids = await CourseRepository(db).list_ids_for_student(
             current_student_id,
-            scope.management_system_id,
         )
         if assignment.course_id not in accessible_course_ids:
             raise HTTPException(status_code=403, detail="仅可提交所属课程作业")
@@ -133,17 +131,16 @@ async def create_submission(
     existing_submission = await service.get_latest_submission_for_student(
         assignment_id=assignment_id,
         student_id=body.student_id,
-        management_system_id=scope.management_system_id,
     )
     if existing_submission:
         raise HTTPException(status_code=409, detail="当前作业已提交，请改用修改接口")
     try:
-        body.attachment_ids = await service.upload_submission_images(files or [], scope.management_system_id)
+        body.attachment_ids = await service.upload_submission_images(files or [])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not body.content and not body.attachment_ids:
         raise HTTPException(status_code=400, detail="提交内容和图片不能同时为空")
-    return await service.create_submission(assignment_id, body, scope.management_system_id)
+    return await service.create_submission(assignment_id, body)
 
 
 @router.put("/submissions/{id}", response_model=SubmissionResponse)
@@ -152,7 +149,6 @@ async def update_submission(
     content: Optional[str] = Form(None),
     retained_attachment_ids: Optional[list[str]] = Form(None),
     files: Optional[list[UploadFile]] = File(None),
-    scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -165,7 +161,6 @@ async def update_submission(
         content (Optional[str]): 本次提交说明。
         retained_attachment_ids (Optional[list[str]]): 保留的附件ID列表。
         files (Optional[list[UploadFile]]): 本次新增的图片文件列表。
-        scope (ManagementScope): 管理系统作用域对象。
         current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话。
 
@@ -176,7 +171,7 @@ async def update_submission(
         raise HTTPException(status_code=403, detail="仅学生可修改自己的提交")
     student_id = await _get_current_student_id_or_404(current_user, db)
     submission_service = SubmissionService(db)
-    submission = await submission_service.get_submission(id, scope.management_system_id)
+    submission = await submission_service.get_submission(id)
     if not submission:
         raise HTTPException(status_code=404, detail="提交记录不存在")
     if submission.student_id != student_id:
@@ -184,7 +179,6 @@ async def update_submission(
     try:
         uploaded_attachment_ids = await submission_service.upload_submission_images(
             files or [],
-            scope.management_system_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -199,7 +193,7 @@ async def update_submission(
     )
     if not body.content and not body.attachment_ids:
         raise HTTPException(status_code=400, detail="提交内容和图片不能同时为空")
-    updated_submission = await submission_service.update_submission(id, body, scope.management_system_id)
+    updated_submission = await submission_service.update_submission(id, body)
     if not updated_submission:
         raise HTTPException(status_code=404, detail="提交记录不存在")
     return updated_submission
@@ -212,7 +206,6 @@ async def list_submissions(
     limit: Optional[int] = Query(None, ge=1, le=100),
     page: Optional[int] = Query(None, ge=1),
     size: Optional[int] = Query(None, ge=1, le=100),
-    scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -226,7 +219,6 @@ async def list_submissions(
         limit (Optional[int]): 单次查询的最大返回数量。
         page (Optional[int]): 当前页码。
         size (Optional[int]): 每页条数。
-        scope (ManagementScope): 管理系统作用域对象。
         current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
@@ -237,18 +229,16 @@ async def list_submissions(
     student_id = None
     if current_user.role == UserRole.STUDENT:
         student_id = await _get_current_student_id_or_404(current_user, db)
-        assignment = await AssignmentRepository(db).get(assignment_id, scope.management_system_id)
+        assignment = await AssignmentRepository(db).get(assignment_id)
         if not assignment:
             raise HTTPException(status_code=404, detail="作业不存在")
         accessible_course_ids = await CourseRepository(db).list_ids_for_student(
             student_id,
-            scope.management_system_id,
         )
         if assignment.course_id not in accessible_course_ids:
             raise HTTPException(status_code=403, detail="仅可查看所属课程提交记录")
     return await SubmissionService(db).list_submissions_by_assignment(
         assignment_id=assignment_id,
-        management_system_id=scope.management_system_id,
         student_id=student_id,
         skip=pagination["skip"],
         limit=pagination["limit"],
@@ -260,7 +250,7 @@ async def list_submissions(
 @router.get("/submissions/{id}", response_model=SubmissionResponse)
 async def get_submission(
     id: str,
-    scope: ManagementScope = Depends(get_management_scope),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -269,15 +259,19 @@ async def get_submission(
 
     参数：
         id (str): 目标记录ID。
-        scope (ManagementScope): 管理系统作用域对象。
+        current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
         None: 无返回值。
     """
-    submission = await SubmissionService(db).get_submission(id, scope.management_system_id)
+    submission = await SubmissionService(db).get_submission(id)
     if not submission:
         raise HTTPException(status_code=404, detail="提交记录不存在")
+    if current_user.role == UserRole.STUDENT:
+        student_id = await _get_current_student_id_or_404(current_user, db)
+        if submission.student_id != student_id:
+            raise HTTPException(status_code=403, detail="仅可查看自己的提交")
     return submission
 
 
@@ -285,7 +279,6 @@ async def get_submission(
 async def grade_submission(
     id: str,
     body: SubmissionGrade,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -296,7 +289,6 @@ async def grade_submission(
     参数：
         id (str): 目标记录ID。
         body (SubmissionGrade): 接口请求体对象。
-        scope (ManagementScope): 管理系统作用域对象。
         current_teacher (Teacher): 当前登录教师对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
@@ -306,7 +298,6 @@ async def grade_submission(
     submission = await SubmissionService(db).grade_submission(
         id,
         body,
-        scope.management_system_id,
         current_teacher.user_id,
     )
     if not submission:
@@ -314,25 +305,63 @@ async def grade_submission(
     return submission
 
 
-@router.get("/submissions/{id}/ai-feedback", response_model=AIFeedbackResponse)
-async def get_ai_feedback(
+@router.get("/submissions/{id}/attachment-feedbacks", response_model=AttachmentAIFeedbackListResponse)
+async def list_attachment_ai_feedbacks(
     id: str,
-    scope: ManagementScope = Depends(get_management_scope),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    功能描述：
-        获取提交记录的 AI 评语，前端可轮询 status 字段判断生成状态。
+    if current_user.role == UserRole.STUDENT:
+        student_id = await _get_current_student_id_or_404(current_user, db)
+        submission = await SubmissionService(db).get_submission(id)
+        if not submission:
+            raise HTTPException(status_code=404, detail="提交记录不存在")
+        if submission.student_id != student_id:
+            raise HTTPException(status_code=403, detail="仅可查看自己的附件评价")
+    items = await SubmissionService(db).list_attachment_ai_feedbacks(id)
+    if items is None:
+        raise HTTPException(status_code=404, detail="提交记录不存在")
+    return {"items": items}
 
-    参数：
-        id (str): 目标记录ID。
-        scope (ManagementScope): 管理系统作用域对象。
-        db (AsyncSession): 数据库会话，用于执行持久化操作。
 
-    返回值：
-        dict: 返回 ai_feedback 字典。
-    """
-    result = await SubmissionService(db).get_ai_feedback(id, scope.management_system_id)
+@router.post("/submissions/{id}/ai-summary", response_model=SubmissionAISummaryTriggerResponse)
+async def trigger_student_ai_summary(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="仅学生可主动生成 AI 总评")
+    student_id = await _get_current_student_id_or_404(current_user, db)
+    submission = await SubmissionService(db).get_submission(id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="提交记录不存在")
+    if submission.student_id != student_id:
+        raise HTTPException(status_code=403, detail="仅可为自己的提交生成 AI 总评")
+    result = await SubmissionService(db).queue_student_ai_summary(
+        id=id,
+        student_user_id=current_user.id,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="提交记录不存在")
+    return result
+
+
+@router.get("/submissions/{id}/ai-summary", response_model=SubmissionAISummaryResponse)
+async def get_student_ai_summary(
+    id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="仅学生可查看 AI 总评")
+    student_id = await _get_current_student_id_or_404(current_user, db)
+    submission = await SubmissionService(db).get_submission(id)
+    if not submission:
+        raise HTTPException(status_code=404, detail="提交记录不存在")
+    if submission.student_id != student_id:
+        raise HTTPException(status_code=403, detail="仅可查看自己的 AI 总评")
+    result = await SubmissionService(db).get_student_ai_summary(id)
     if result is None:
         raise HTTPException(status_code=404, detail="提交记录不存在")
     return result
@@ -342,7 +371,6 @@ async def get_ai_feedback(
 async def save_teacher_feedback(
     id: str,
     body: TeacherFeedbackUpdate,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -353,7 +381,6 @@ async def save_teacher_feedback(
     参数：
         id (str): 目标记录ID。
         body (TeacherFeedbackUpdate): 接口请求体对象。
-        scope (ManagementScope): 管理系统作用域对象。
         current_teacher (Teacher): 当前登录教师对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
@@ -364,7 +391,6 @@ async def save_teacher_feedback(
         id=id,
         teacher_feedback=body.teacher_feedback,
         score=body.score,
-        management_system_id=scope.management_system_id,
     )
     if not submission:
         raise HTTPException(status_code=404, detail="提交记录不存在")
@@ -375,7 +401,6 @@ async def save_teacher_feedback(
 async def upload_submission_images(
     assignment_id: str,
     files: list[UploadFile] = File(...),
-    management_system_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -385,7 +410,6 @@ async def upload_submission_images(
     参数：
         assignment_id (str): 作业ID。
         files (list[UploadFile]): 上传的图片文件列表。
-        management_system_id (Optional[str]): 管理系统ID。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
@@ -395,7 +419,6 @@ async def upload_submission_images(
     try:
         attachment_ids = await service.upload_submission_images(
             files=files,
-            management_system_id=management_system_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

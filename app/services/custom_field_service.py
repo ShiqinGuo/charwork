@@ -811,7 +811,6 @@ class CustomFieldService:
         result = await self.repo.db.execute(
             select(Assignment.id).where(
                 Assignment.id == target_id,
-                Assignment.management_system_id == management_system_id,
             )
         )
         return bool(result.scalar())
@@ -831,7 +830,6 @@ class CustomFieldService:
         result = await self.repo.db.execute(
             select(Course.id).where(
                 Course.id == target_id,
-                Course.management_system_id == management_system_id,
             )
         )
         return bool(result.scalar())

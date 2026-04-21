@@ -21,22 +21,17 @@ class SubmissionRepository:
         """
         self.db = db
 
-    async def get(self, id: str, management_system_id: Optional[str] = None) -> Optional[Submission]:
+    async def get(self, id: str) -> Optional[Submission]:
         """
         功能描述：
             获取SubmissionRepository。
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[Submission]: 返回处理结果对象；无可用结果时返回 None。
         """
-        query = select(Submission).where(Submission.id == id)
-        if management_system_id:
-            query = query.where(Submission.management_system_id == management_system_id)
-        query = query.options(joinedload(Submission.attachments))
+        query = select(Submission).where(Submission.id == id).options(joinedload(Submission.attachments))
         result = await self.db.execute(query)
         return result.scalars().first()
 
@@ -45,7 +40,6 @@ class SubmissionRepository:
         assignment_id: str,
         skip: int = 0,
         limit: int = 100,
-        management_system_id: Optional[str] = None,
         student_id: Optional[str] = None,
     ) -> List[Submission]:
         """
@@ -56,15 +50,12 @@ class SubmissionRepository:
             assignment_id (str): 作业ID。
             skip (int): 分页偏移量。
             limit (int): 单次查询的最大返回数量。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
             student_id (Optional[str]): 学生ID。
 
         返回值：
             List[Submission]: 返回查询到的结果对象。
         """
         query = select(Submission).where(Submission.assignment_id == assignment_id)
-        if management_system_id:
-            query = query.where(Submission.management_system_id == management_system_id)
         if student_id:
             query = query.where(Submission.student_id == student_id)
         query = query.options(joinedload(Submission.attachments))
@@ -76,7 +67,6 @@ class SubmissionRepository:
     async def count_by_assignment(
         self,
         assignment_id: str,
-        management_system_id: Optional[str] = None,
         student_id: Optional[str] = None,
     ) -> int:
         """
@@ -85,15 +75,12 @@ class SubmissionRepository:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
             student_id (Optional[str]): 学生ID。
 
         返回值：
             int: 返回统计结果。
         """
         query = select(func.count()).select_from(Submission).where(Submission.assignment_id == assignment_id)
-        if management_system_id:
-            query = query.where(Submission.management_system_id == management_system_id)
         if student_id:
             query = query.where(Submission.student_id == student_id)
         result = await self.db.execute(
@@ -105,7 +92,6 @@ class SubmissionRepository:
         self,
         assignment_id: str,
         student_id: str,
-        management_system_id: Optional[str] = None,
     ) -> Optional[Submission]:
         """
         功能描述：
@@ -114,25 +100,19 @@ class SubmissionRepository:
         参数：
             assignment_id (str): 作业ID。
             student_id (str): 学生ID。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[Submission]: 返回最新提交记录；未命中时返回 None。
         """
         query = select(Submission).where(
             Submission.assignment_id == assignment_id,
             Submission.student_id == student_id,
-        )
-        if management_system_id:
-            query = query.where(Submission.management_system_id == management_system_id)
-        query = query.options(joinedload(Submission.attachments))
+        ).options(joinedload(Submission.attachments))
         result = await self.db.execute(
             query.order_by(desc(Submission.submitted_at), desc(Submission.id)).limit(1)
         )
         return result.scalars().first()
 
-    async def create(self, assignment_id: str, submission_in: SubmissionCreate,
-                     management_system_id: str) -> Submission:
+    async def create(self, assignment_id: str, submission_in: SubmissionCreate) -> Submission:
         """
         功能描述：
             创建SubmissionRepository。
@@ -140,19 +120,16 @@ class SubmissionRepository:
         参数：
             assignment_id (str): 作业ID。
             submission_in (SubmissionCreate): 提交记录输入对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Submission: 返回Submission类型的处理结果。
         """
-        submission = self.build_submission(assignment_id, submission_in, management_system_id)
+        submission = self.build_submission(assignment_id, submission_in)
         self.db.add(submission)
         await self.db.commit()
         await self.db.refresh(submission)
         return submission
 
-    def build_submission(self, assignment_id: str, submission_in: SubmissionCreate,
-                         management_system_id: str) -> Submission:
+    def build_submission(self, assignment_id: str, submission_in: SubmissionCreate) -> Submission:
         """
         功能描述：
             构建提交记录。
@@ -160,15 +137,12 @@ class SubmissionRepository:
         参数：
             assignment_id (str): 作业ID。
             submission_in (SubmissionCreate): 提交记录输入对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Submission: 返回构建后的结果对象。
         """
         submission = Submission(
             assignment_id=assignment_id,
             student_id=submission_in.student_id,
-            management_system_id=management_system_id,
             content=submission_in.content,
         )
         return submission
@@ -222,7 +196,6 @@ class SubmissionRepository:
         teacher_id: str,
         skip: int = 0,
         limit: int = 20,
-        management_system_id: Optional[str] = None,
         status: Optional[str] = None,
         assignment_id: Optional[str] = None,
     ) -> List[Submission]:
@@ -234,7 +207,6 @@ class SubmissionRepository:
             teacher_id (str): 教师ID。
             skip (int): 分页偏移量。
             limit (int): 单次查询的最大返回数量。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
             status (Optional[str]): 提交状态筛选。
             assignment_id (Optional[str]): 作业ID筛选。
 
@@ -253,8 +225,6 @@ class SubmissionRepository:
                 joinedload(Submission.attachments),
             )
         )
-        if management_system_id:
-            query = query.where(Submission.management_system_id == management_system_id)
         if status:
             query = query.where(Submission.status == status)
         if assignment_id:
@@ -267,7 +237,6 @@ class SubmissionRepository:
     async def count_by_teacher(
         self,
         teacher_id: str,
-        management_system_id: Optional[str] = None,
         status: Optional[str] = None,
         assignment_id: Optional[str] = None,
     ) -> int:
@@ -277,7 +246,6 @@ class SubmissionRepository:
 
         参数：
             teacher_id (str): 教师ID。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
             status (Optional[str]): 提交状态筛选。
             assignment_id (Optional[str]): 作业ID筛选。
 
@@ -292,8 +260,6 @@ class SubmissionRepository:
             .join(Assignment, Submission.assignment_id == Assignment.id)
             .where(Assignment.teacher_id == teacher_id)
         )
-        if management_system_id:
-            query = query.where(Submission.management_system_id == management_system_id)
         if status:
             query = query.where(Submission.status == status)
         if assignment_id:

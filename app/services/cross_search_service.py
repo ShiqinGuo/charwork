@@ -1,13 +1,13 @@
 """
 为什么这样做：跨模块检索统一落 ES 全局索引，屏蔽各业务表差异，提供一致检索入口。
-特殊逻辑：索引分析器与权限过滤都在服务层集中控制；学生命中结果需二次按课程/班级边界裁剪。
+特殊逻辑：索引只做召回，最终可见性按当前用户角色与业务归属二次过滤。
 """
 
 import logging
 from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
 from elasticsearch import NotFoundError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.es_client import get_es_client
@@ -25,32 +25,12 @@ logger = logging.getLogger(__name__)
 
 class CrossSearchService:
     def __init__(self, db: AsyncSession):
-        """
-        功能描述：
-            初始化CrossSearchService并准备运行所需的依赖对象。
-
-        参数：
-            db (AsyncSession): 数据库会话，用于执行持久化操作。
-
-        返回值：
-            None: 无返回值。
-        """
         self.db = db
         self.es = get_es_client()
         self.index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}_global_search"
         self.module_configs = get_enabled_search_module_configs()
 
     async def ensure_index(self) -> None:
-        """
-        功能描述：
-            确保索引存在，必要时自动补齐。
-
-        参数：
-            无。
-
-        返回值：
-            None: 无返回值。
-        """
         exists = await self.es.indices.exists(index=self.index_name)
         if exists:
             return
@@ -79,7 +59,6 @@ class CrossSearchService:
                     "properties": {
                         "module": {"type": "keyword"},
                         "source_id": {"type": "keyword"},
-                        "management_system_ids": {"type": "keyword"},
                         "title": {"type": "text", "analyzer": "charwork_ngram_analyzer"},
                         "content": {"type": "text", "analyzer": "charwork_ngram_analyzer"},
                     }
@@ -88,35 +67,13 @@ class CrossSearchService:
         )
 
     async def ensure_index_with_bootstrap(self) -> ReindexResponse:
-        """
-        功能描述：
-            确保索引withbootstrap存在，必要时自动补齐。
-
-        参数：
-            无。
-
-        返回值：
-            ReindexResponse: 返回ReindexResponse类型的处理结果。
-        """
         await self.ensure_index()
         return await self.reindex()
 
     async def _upsert_document(self, doc_id: str, document: SearchDocument) -> None:
-        """
-        功能描述：
-            新增或更新document。
-
-        参数：
-            doc_id (str): docID。
-            document (SearchDocument): SearchDocument 类型的数据。
-
-        返回值：
-            None: 无返回值。
-        """
         payload = {
             "module": document.module,
             "source_id": document.source_id,
-            "management_system_ids": document.management_system_ids,
             "title": document.title,
             "content": document.content,
         }
@@ -129,32 +86,12 @@ class CrossSearchService:
         )
 
     async def _delete_document(self, doc_id: str) -> None:
-        """
-        功能描述：
-            删除document。
-
-        参数：
-            doc_id (str): docID。
-
-        返回值：
-            None: 无返回值。
-        """
         try:
             await self.es.delete(index=self.index_name, id=doc_id, refresh=False)
         except NotFoundError:
             return
 
     async def reindex(self) -> ReindexResponse:
-        """
-        功能描述：
-            处理CrossSearchService。
-
-        参数：
-            无。
-
-        返回值：
-            ReindexResponse: 返回ReindexResponse类型的处理结果。
-        """
         await self.ensure_index()
         indexed = 0
         for table, config in self.module_configs.items():
@@ -169,18 +106,6 @@ class CrossSearchService:
         return ReindexResponse(status="success", indexed=indexed)
 
     async def apply_cdc_change(self, table: str, operation: str, data: dict) -> None:
-        """
-        功能描述：
-            处理cdcchange。
-
-        参数：
-            table (str): 字符串结果。
-            operation (str): 字符串结果。
-            data (dict): 字典形式的结果数据。
-
-        返回值：
-            None: 无返回值。
-        """
         await self.ensure_index()
         operation = (operation or "").lower()
         source_id = data.get("id")
@@ -208,24 +133,9 @@ class CrossSearchService:
         self,
         keyword: str,
         current_user: SessionUser,
-        management_system_id: str,
         modules: Optional[list[str]] = None,
         limit: int = 20,
     ) -> CrossSearchResponse:
-        """
-        功能描述：
-            检索CrossSearchService。
-
-        参数：
-            keyword (str): 字符串结果。
-            current_user (SessionUser): 当前登录用户对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-            modules (Optional[list[str]]): 列表结果。
-            limit (int): 单次查询的最大返回数量。
-
-        返回值：
-            CrossSearchResponse: 返回CrossSearchResponse类型的处理结果。
-        """
         await self.ensure_index()
         allowed_modules = self._normalize_requested_modules(modules)
         must = [
@@ -236,10 +146,9 @@ class CrossSearchService:
                 }
             }
         ]
-        filter_query = [{"term": {"management_system_ids": management_system_id}}]
+        filter_query: list[dict] = []
         if allowed_modules:
             filter_query.append({"terms": {"module": allowed_modules}})
-        # ES 先按更宽松的条件召回候选结果，再由业务权限过滤做二次裁剪，避免因索引字段不足漏召回。
         response = await self.es.search(
             index=self.index_name,
             body={
@@ -256,53 +165,36 @@ class CrossSearchService:
         hits = await self._filter_hits_by_permissions(
             hits=hits,
             current_user=current_user,
-            management_system_id=management_system_id,
             modules=allowed_modules,
         )
-        items = [
-            self._to_search_hit(hit, management_system_id)
-            for hit in hits[:limit]
-        ]
+        items = [self._to_search_hit(hit) for hit in hits[:limit]]
         return CrossSearchResponse(keyword=keyword, total=len(items), items=items)
 
     async def _filter_hits_by_permissions(
         self,
         hits: list[dict],
         current_user: SessionUser,
-        management_system_id: str,
         modules: list[str] | None,
     ) -> list[dict]:
-        """
-        功能描述：
-            过滤hitsbypermissions。
-
-        参数：
-            hits (list[dict]): 列表结果。
-            current_user (SessionUser): 当前登录用户对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-            modules (list[str] | None): 列表结果。
-
-        返回值：
-            list[dict]: 返回列表形式的结果数据。
-        """
-        if current_user.role != UserRole.STUDENT:
-            if not modules:
-                return hits
-            return [hit for hit in hits if hit.get("_source", {}).get("module") in modules]
-        # 学生权限依赖实际入班与选课关系，不能只看检索索引中的模块字段。
+        if current_user.role == UserRole.ADMIN:
+            return self._filter_by_modules(hits, modules)
+        if current_user.role == UserRole.TEACHER:
+            return self._filter_teacher_hits(hits, current_user.id, modules)
         student = await StudentRepository(self.db).get_by_user_id(current_user.id)
         if not student:
             return []
-        course_ids = set(await CourseRepository(self.db).list_ids_for_student(student.id, management_system_id))
-        class_ids = set(await TeachingClassRepository(self.db).list_ids_for_student(student.id, management_system_id))
+        course_ids = set(await CourseRepository(self.db).list_ids_for_student(student.id))
+        class_ids = set(await TeachingClassRepository(self.db).list_ids_for_student(student.id))
         filtered_hits: list[dict] = []
         for hit in hits:
             source = hit.get("_source", {})
             module = str(source.get("module") or "")
             if modules and module not in modules:
                 continue
-            if module == "hanzi":
-                # 汉字条目是共享基础数据，学生在当前管理系统下默认可见。
+            if module == "student" and str(source.get("student_user_id") or "") == current_user.id:
+                filtered_hits.append(hit)
+                continue
+            if module == "hanzi" and not source.get("created_by_user_id"):
                 filtered_hits.append(hit)
                 continue
             if module == "assignment" and str(source.get("course_id") or "") in course_ids:
@@ -318,17 +210,38 @@ class CrossSearchService:
                 filtered_hits.append(hit)
         return filtered_hits
 
+    @staticmethod
+    def _filter_by_modules(hits: list[dict], modules: list[str] | None) -> list[dict]:
+        if not modules:
+            return hits
+        return [hit for hit in hits if hit.get("_source", {}).get("module") in modules]
+
+    def _filter_teacher_hits(
+        self,
+        hits: list[dict],
+        teacher_user_id: str,
+        modules: list[str] | None,
+    ) -> list[dict]:
+        filtered_hits: list[dict] = []
+        for hit in self._filter_by_modules(hits, modules):
+            source = hit.get("_source", {})
+            module = str(source.get("module") or "")
+            if module in {"assignment", "course", "teaching_class", "discussion"}:
+                if str(source.get("teacher_user_id") or "") == teacher_user_id:
+                    filtered_hits.append(hit)
+                continue
+            if module == "student":
+                teacher_user_ids = source.get("teacher_user_ids") or []
+                if teacher_user_id in teacher_user_ids:
+                    filtered_hits.append(hit)
+                continue
+            if module == "hanzi":
+                created_by_user_id = source.get("created_by_user_id")
+                if created_by_user_id in {None, "", teacher_user_id}:
+                    filtered_hits.append(hit)
+        return filtered_hits
+
     def _normalize_requested_modules(self, modules: Optional[list[str]]) -> list[str] | None:
-        """
-        功能描述：
-            处理requestedmodules。
-
-        参数：
-            modules (Optional[list[str]]): 列表结果。
-
-        返回值：
-            list[str] | None: 返回列表形式的结果数据。
-        """
         available_modules = {config.module for config in self.module_configs.values()}
         if not modules:
             return None
@@ -337,30 +250,9 @@ class CrossSearchService:
 
     @staticmethod
     def _build_document_id(table: str, source_id: str) -> str:
-        """
-        功能描述：
-            构建document标识。
-
-        参数：
-            table (str): 字符串结果。
-            source_id (str): sourceID。
-
-        返回值：
-            str: 返回str类型的处理结果。
-        """
         return f"{table}_{source_id}"
 
-    def _to_search_hit(self, hit: dict, management_system_id: str) -> SearchHit:
-        """
-        功能描述：
-            将输入数据转换为检索hit。
-
-        参数：
-            hit (dict): 字典形式的结果数据。
-
-        返回值：
-            SearchHit: 返回SearchHit类型的处理结果。
-        """
+    def _to_search_hit(self, hit: dict) -> SearchHit:
         source = hit["_source"]
         target_type = str(source.get("target_type") or source["module"])
         return SearchHit(
@@ -370,15 +262,15 @@ class CrossSearchService:
             title=source["title"],
             content=source["content"],
             target_type=target_type,
-            url=self._build_hit_url(source["module"], source["source_id"], management_system_id),
+            url=self._build_hit_url(source["module"], source["source_id"]),
         )
 
     @staticmethod
-    def _build_hit_url(module: str, source_id: str, management_system_id: str) -> str | None:
+    def _build_hit_url(module: str, source_id: str) -> str | None:
         module_to_path = {
-            "hanzi": f"/management-systems/{management_system_id}/modules/hanzi/{source_id}",
-            "assignment": f"/management-systems/{management_system_id}/modules/assignments/{source_id}",
-            "student": f"/management-systems/{management_system_id}/modules/students/{source_id}",
+            "hanzi": f"/management-systems/default/modules/hanzi/{source_id}",
+            "assignment": f"/management-systems/default/modules/assignments/{source_id}",
+            "student": f"/management-systems/default/modules/students/{source_id}",
             "course": f"/courses/{source_id}",
             "teaching_class": "/classes",
             "discussion": "/messages",

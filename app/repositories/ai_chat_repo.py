@@ -20,7 +20,6 @@ class AIChatRepository:
     async def list_conversations(
         self,
         teacher_user_id: str,
-        management_system_id: str,
         limit: int = 30,
         offset: int = 0,
     ) -> list[AIChatConversation]:
@@ -29,7 +28,6 @@ class AIChatRepository:
             .where(
                 and_(
                     AIChatConversation.teacher_user_id == teacher_user_id,
-                    AIChatConversation.management_system_id == management_system_id,
                     AIChatConversation.is_deleted.is_(False),
                 )
             )
@@ -39,13 +37,12 @@ class AIChatRepository:
         )
         return result.scalars().all()
 
-    async def count_conversations(self, teacher_user_id: str, management_system_id: str) -> int:
+    async def count_conversations(self, teacher_user_id: str) -> int:
         result = await self.db.execute(
             select(AIChatConversation)
             .where(
                 and_(
                     AIChatConversation.teacher_user_id == teacher_user_id,
-                    AIChatConversation.management_system_id == management_system_id,
                     AIChatConversation.is_deleted.is_(False),
                 )
             )
@@ -56,13 +53,11 @@ class AIChatRepository:
         self,
         conversation_id: str,
         teacher_user_id: str,
-        management_system_id: str,
         title: str,
     ) -> AIChatConversation:
         item = AIChatConversation(
             id=conversation_id,
             teacher_user_id=teacher_user_id,
-            management_system_id=management_system_id,
             title=title,
         )
         self.db.add(item)
@@ -164,7 +159,6 @@ class AIChatRepository:
         conversation_id: str,
         message_id: str,
         teacher_user_id: str,
-        management_system_id: str,
         student_id: Optional[str],
         facts: list[dict],
     ) -> None:
@@ -174,7 +168,6 @@ class AIChatRepository:
                     conversation_id=conversation_id,
                     message_id=message_id,
                     teacher_user_id=teacher_user_id,
-                    management_system_id=management_system_id,
                     student_id=student_id,
                     fact_type=str(fact.get("fact_type") or "tool_result"),
                     fact_key=str(fact.get("fact_key") or ""),
@@ -186,7 +179,6 @@ class AIChatRepository:
     async def list_latest_memory_facts(
         self,
         teacher_user_id: str,
-        management_system_id: str,
         limit: int,
     ) -> list[AIChatMemoryFact]:
         result = await self.db.execute(
@@ -194,7 +186,6 @@ class AIChatRepository:
             .where(
                 and_(
                     AIChatMemoryFact.teacher_user_id == teacher_user_id,
-                    AIChatMemoryFact.management_system_id == management_system_id,
                 )
             )
             .order_by(desc(AIChatMemoryFact.created_at))

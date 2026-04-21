@@ -21,12 +21,6 @@ class Submission(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
     assignment_id: Mapped[str] = mapped_column(String(50), ForeignKey("assignment.id"), nullable=False)
     student_id: Mapped[str] = mapped_column(String(50), ForeignKey("student.id"), nullable=False)
-    management_system_id: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
-        nullable=True,
-        index=True,
-    )
 
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

@@ -36,10 +36,10 @@ from app.core.app_state import stroke_service
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.logging import setup_logging
-from app.services.cross_search_service import CrossSearchService
 from app.services.hanzi_dictionary_search_service import HanziDictionarySearchService
 from app.services.hanzi_dictionary_service import HanziDictionaryService
 from app.services.management_system_service import ManagementSystemService
+from app.services.cross_search_service import CrossSearchService
 
 
 ROOT_MESSAGE = "Shaneguo's project"
@@ -61,8 +61,8 @@ ROUTER_CONFIGS = (
     (routes_submissions.router, settings.API_V1_STR, ["submissions"]),
     (routes_comments.router, f"{settings.API_V1_STR}/comments", ["comments"]),
     (routes_messages.router, f"{settings.API_V1_STR}/messages", ["messages"]),
-    (routes_search.router, f"{settings.API_V1_STR}/search", ["search"]),
     (routes_ai_chat.router, f"{settings.API_V1_STR}/ai-chat", ["ai-chat"]),
+    (routes_search.router, f"{settings.API_V1_STR}/search", ["search"]),
     (routes_teaching_classes.router, f"{settings.API_V1_STR}/teaching-classes", ["teaching-classes"]),
 )
 
@@ -103,9 +103,9 @@ async def _bootstrap_application() -> None:
     stroke_service.load()
     async with AsyncSessionLocal() as db:
         await ManagementSystemService(db).backfill_default_systems()
-        await CrossSearchService(db).ensure_index_with_bootstrap()
         await HanziDictionaryService(db).initialize_from_strokes(settings.STROKES_FILE_PATH, force=False)
         await HanziDictionarySearchService(db).ensure_index_with_bootstrap()
+        await CrossSearchService(db).ensure_index_with_bootstrap()
 
 
 def _include_routers(application: FastAPI) -> None:

@@ -5,10 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_student, get_current_teacher, get_current_user
 from app.core.database import get_db
-from app.core.management_scope import ManagementScope, get_management_scope
 from app.models.student import Student
 from app.models.teacher import Teacher
-from app.models.user import User
+from app.models.user import User, UserRole
+from app.repositories.student_repo import StudentRepository
 from app.schemas.teaching_class import (
     TeachingClassCreate,
     TeachingClassJoinConfirmResponse,
@@ -34,7 +34,7 @@ async def list_teaching_classes(
     size: Optional[int] = Query(None, ge=1, le=100),
     teacher_id: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
-    scope: ManagementScope = Depends(get_management_scope),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -48,17 +48,34 @@ async def list_teaching_classes(
         size (Optional[int]): 每页条数。
         teacher_id (Optional[str]): 教师ID。
         status_filter (Optional[str]): 状态信息。
-        scope (ManagementScope): 管理系统作用域对象。
+        current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
         None: 无返回值。
     """
     pagination = resolve_pagination(page=page, size=size, skip=skip, limit=limit)
+    student_teacher_id = teacher_id
+    if current_user.role == UserRole.STUDENT:
+        student = await StudentRepository(db).get_by_user_id(current_user.id)
+        if not student:
+            raise HTTPException(status_code=404, detail="学生档案不存在")
+        teaching_class_ids = await TeachingClassService(db).repo.list_ids_for_student(student.id)
+        items = await TeachingClassService(db).list_teaching_classes(
+            skip=pagination["skip"],
+            limit=pagination["limit"],
+            teacher_id=student_teacher_id,
+            status=status_filter,
+            page=pagination["page"],
+            size=pagination["size"],
+        )
+        filtered_items = [item for item in items.items if item.id in set(teaching_class_ids)]
+        items.items = filtered_items
+        items.total = len(filtered_items)
+        return items
     return await TeachingClassService(db).list_teaching_classes(
         skip=pagination["skip"],
         limit=pagination["limit"],
-        management_system_id=scope.management_system_id,
         teacher_id=teacher_id,
         status=status_filter,
         page=pagination["page"],
@@ -69,7 +86,6 @@ async def list_teaching_classes(
 @router.post("/", response_model=TeachingClassResponse, status_code=status.HTTP_201_CREATED)
 async def create_teaching_class(
     body: TeachingClassCreate,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -79,20 +95,19 @@ async def create_teaching_class(
 
     参数：
         body (TeachingClassCreate): 接口请求体对象。
-        scope (ManagementScope): 管理系统作用域对象。
         current_teacher (Teacher): 当前登录教师对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
         None: 无返回值。
     """
-    return await TeachingClassService(db).create_teaching_class(body, current_teacher.id, scope.management_system_id)
+    return await TeachingClassService(db).create_teaching_class(body, current_teacher.id)
 
 
 @router.get("/{id}", response_model=TeachingClassResponse)
 async def get_teaching_class(
     id: str,
-    scope: ManagementScope = Depends(get_management_scope),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -101,22 +116,29 @@ async def get_teaching_class(
 
     参数：
         id (str): 目标记录ID。
-        scope (ManagementScope): 管理系统作用域对象。
+        current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
         None: 无返回值。
     """
-    item = await TeachingClassService(db).get_teaching_class(id, scope.management_system_id)
+    item = await TeachingClassService(db).get_teaching_class(id)
     if not item:
         raise HTTPException(status_code=404, detail="教学班级不存在")
+    if current_user.role == UserRole.STUDENT:
+        student = await StudentRepository(db).get_by_user_id(current_user.id)
+        if not student:
+            raise HTTPException(status_code=404, detail="学生档案不存在")
+        teaching_class_ids = await TeachingClassService(db).repo.list_ids_for_student(student.id)
+        if id not in teaching_class_ids:
+            raise HTTPException(status_code=403, detail="仅可查看已加入教学班级")
     return item
 
 
 @router.get("/{id}/members", response_model=TeachingClassMemberListResponse)
 async def list_teaching_class_members(
     id: str,
-    scope: ManagementScope = Depends(get_management_scope),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -125,14 +147,21 @@ async def list_teaching_class_members(
 
     参数：
         id (str): 目标记录ID。
-        scope (ManagementScope): 管理系统作用域对象。
+        current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
         None: 无返回值。
     """
     try:
-        return await TeachingClassService(db).list_members(id, scope.management_system_id)
+        if current_user.role == UserRole.STUDENT:
+            student = await StudentRepository(db).get_by_user_id(current_user.id)
+            if not student:
+                raise HTTPException(status_code=404, detail="学生档案不存在")
+            teaching_class_ids = await TeachingClassService(db).repo.list_ids_for_student(student.id)
+            if id not in teaching_class_ids:
+                raise HTTPException(status_code=403, detail="仅可查看已加入教学班级成员")
+        return await TeachingClassService(db).list_members(id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -141,7 +170,6 @@ async def list_teaching_class_members(
 async def create_teaching_class_join_token(
     id: str,
     body: TeachingClassJoinTokenCreate,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -152,7 +180,6 @@ async def create_teaching_class_join_token(
     参数：
         id (str): 目标记录ID。
         body (TeachingClassJoinTokenCreate): 接口请求体对象。
-        scope (ManagementScope): 管理系统作用域对象。
         current_teacher (Teacher): 当前登录教师对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
@@ -162,7 +189,6 @@ async def create_teaching_class_join_token(
     try:
         return await TeachingClassService(db).create_join_token(
             id,
-            scope.management_system_id,
             current_teacher.id,
             body,
         )

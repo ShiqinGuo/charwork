@@ -22,41 +22,17 @@ class CourseRepository:
         """
         self.db = db
 
-    async def get(self, id: str, management_system_id: Optional[str] = None) -> Optional[Course]:
+    async def get(self, id: str) -> Optional[Course]:
         """
         功能描述：
             获取CourseRepository。
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[Course]: 返回处理结果对象；无可用结果时返回 None。
         """
-        query = select(Course).where(Course.id == id)
-        if management_system_id:
-            query = query.where(Course.management_system_id == management_system_id)
-        result = await self.db.execute(query)
-        return result.scalars().first()
-
-    async def get_default(self, management_system_id: str) -> Optional[Course]:
-        """
-        功能描述：
-            按条件获取默认。
-
-        参数：
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
-        返回值：
-            Optional[Course]: 返回查询到的结果对象；未命中时返回 None。
-        """
-        result = await self.db.execute(
-            select(Course).where(
-                Course.management_system_id == management_system_id,
-                Course.is_default.is_(True),
-            )
-        )
+        result = await self.db.execute(select(Course).where(Course.id == id))
         return result.scalars().first()
 
     async def list_by_teaching_class(self, teaching_class_id: str) -> list[Course]:
@@ -77,15 +53,13 @@ class CourseRepository:
         )
         return result.scalars().all()
 
-    async def list_ids_for_student(self, student_id: str, management_system_id: str) -> list[str]:
+    async def list_ids_for_student(self, student_id: str) -> list[str]:
         """
         功能描述：
             按条件查询标识列表for学生列表。
 
         参数：
             student_id (str): 学生ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             list[str]: 返回列表形式的结果数据。
         """
@@ -93,7 +67,6 @@ class CourseRepository:
             select(Course.id)
             .join(TeachingClassMember, TeachingClassMember.teaching_class_id == Course.teaching_class_id)
             .where(
-                Course.management_system_id == management_system_id,
                 TeachingClassMember.student_id == student_id,
                 TeachingClassMember.status == TeachingClassMemberStatus.ACTIVE,
             )
@@ -105,7 +78,6 @@ class CourseRepository:
         self,
         skip: int = 0,
         limit: int = 20,
-        management_system_id: Optional[str] = None,
         teaching_class_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
@@ -117,7 +89,6 @@ class CourseRepository:
         参数：
             skip (int): 分页偏移量。
             limit (int): 单次查询的最大返回数量。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
             teaching_class_id (Optional[str]): 教学班级ID。
             teacher_id (Optional[str]): 教师ID。
             status (Optional[str]): 状态筛选条件或目标状态。
@@ -126,8 +97,6 @@ class CourseRepository:
             list[Course]: 返回列表形式的结果数据。
         """
         query = select(Course)
-        if management_system_id:
-            query = query.where(Course.management_system_id == management_system_id)
         if teaching_class_id:
             query = query.where(Course.teaching_class_id == teaching_class_id)
         if teacher_id:
@@ -141,7 +110,6 @@ class CourseRepository:
 
     async def count(
         self,
-        management_system_id: Optional[str] = None,
         teaching_class_id: Optional[str] = None,
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
@@ -151,7 +119,6 @@ class CourseRepository:
             统计CourseRepository。
 
         参数：
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
             teaching_class_id (Optional[str]): 教学班级ID。
             teacher_id (Optional[str]): 教师ID。
             status (Optional[str]): 状态筛选条件或目标状态。
@@ -160,8 +127,6 @@ class CourseRepository:
             int: 返回int类型的处理结果。
         """
         query = select(func.count()).select_from(Course)
-        if management_system_id:
-            query = query.where(Course.management_system_id == management_system_id)
         if teaching_class_id:
             query = query.where(Course.teaching_class_id == teaching_class_id)
         if teacher_id:
@@ -171,7 +136,7 @@ class CourseRepository:
         result = await self.db.execute(query)
         return int(result.scalar() or 0)
 
-    async def create(self, course_in: CourseCreate, teacher_id: str, management_system_id: str) -> Course:
+    async def create(self, course_in: CourseCreate, teacher_id: str) -> Course:
         """
         功能描述：
             创建CourseRepository。
@@ -179,18 +144,12 @@ class CourseRepository:
         参数：
             course_in (CourseCreate): 课程输入对象。
             teacher_id (str): 教师ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Course: 返回Course类型的处理结果。
         """
         payload = course_in.model_dump()
         payload.pop("custom_field_values", None)
-        item = Course(
-            **payload,
-            teacher_id=teacher_id,
-            management_system_id=management_system_id,
-        )
+        item = Course(**payload, teacher_id=teacher_id)
         self.db.add(item)
         await self.db.commit()
         await self.db.refresh(item)

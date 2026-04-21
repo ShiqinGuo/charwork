@@ -14,6 +14,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
+CACHE_FALLBACK_EXCEPTIONS = (RedisError, RuntimeError, AttributeError)
 
 # 缓存 TTL 配置（秒），按业务域分类
 CACHE_TTL_SHORT = 300        # 5 分钟 — 高频变更数据
@@ -40,7 +41,7 @@ async def cache_get(redis: Redis, key: str) -> Optional[Any]:
         if raw is None:
             return None
         return json.loads(raw)
-    except (RedisError, json.JSONDecodeError) as exc:
+    except (*CACHE_FALLBACK_EXCEPTIONS, json.JSONDecodeError) as exc:
         logger.warning("cache_get 失败 key=%s: %s", key, exc)
         return None
 
@@ -59,7 +60,7 @@ async def cache_set(
     try:
         payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         await redis.set(key, payload, ex=ttl)
-    except (RedisError, TypeError) as exc:
+    except (*CACHE_FALLBACK_EXCEPTIONS, TypeError) as exc:
         logger.warning("cache_set 失败 key=%s: %s", key, exc)
 
 
@@ -71,7 +72,7 @@ async def cache_delete(redis: Redis, key: str) -> None:
     """
     try:
         await redis.delete(key)
-    except RedisError as exc:
+    except CACHE_FALLBACK_EXCEPTIONS as exc:
         logger.warning("cache_delete 失败 key=%s: %s", key, exc)
 
 
@@ -93,6 +94,6 @@ async def cache_delete_pattern(redis: Redis, pattern: str) -> int:
                     pipe.delete(key)
                 results = await pipe.execute()
             deleted = sum(results)
-    except RedisError as exc:
+    except CACHE_FALLBACK_EXCEPTIONS as exc:
         logger.warning("cache_delete_pattern 失败 pattern=%s: %s", pattern, exc)
     return deleted

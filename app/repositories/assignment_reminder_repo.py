@@ -93,7 +93,6 @@ class AssignmentReminderRepository:
     async def list_due_pending_plans(
         self,
         assignment_id: str,
-        management_system_id: str,
         now: datetime,
     ) -> list[AssignmentReminderPlan]:
         """
@@ -102,7 +101,6 @@ class AssignmentReminderRepository:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             now (datetime): datetime 类型的数据。
 
         返回值：
@@ -112,7 +110,6 @@ class AssignmentReminderRepository:
             select(AssignmentReminderPlan)
             .where(
                 AssignmentReminderPlan.assignment_id == assignment_id,
-                AssignmentReminderPlan.management_system_id == management_system_id,
                 AssignmentReminderPlan.is_enabled.is_(True),
                 AssignmentReminderPlan.status == AssignmentReminderPlanStatus.PENDING,
                 AssignmentReminderPlan.remind_at <= now,

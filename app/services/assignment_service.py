@@ -33,7 +33,6 @@ from app.schemas.assignment import (
     AssignmentTransitionResponse,
 )
 from app.services.assignment_state_machine import AssignmentStateMachine
-from app.services.custom_field_service import CustomFieldService
 from app.services.attachment_service import AttachmentService
 from app.utils.pagination import build_paged_response
 
@@ -78,7 +77,6 @@ class AssignmentService:
     async def get_assignment(
         self,
         id: str,
-        management_system_id: str,
         current_user_role: Optional[str] = None,
     ) -> Optional[AssignmentResponse]:
         """
@@ -87,21 +85,14 @@ class AssignmentService:
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             current_user_role (Optional[str]): 当前用户角色，用于控制权限或字段可见性。
 
         返回值：
             Optional[AssignmentResponse]: 返回查询到的结果对象；未命中时返回 None。
         """
-        assignment = await self.repo.get(id, management_system_id)
+        assignment = await self.repo.get(id)
         if assignment:
-            custom_field_values = await CustomFieldService(self.repo.db).list_value_map(
-                management_system_id,
-                "assignment",
-                assignment.id,
-                viewer_role=current_user_role,
-            )
-            return self._to_response(assignment, custom_field_values=custom_field_values)
+            return self._to_response(assignment)
         return None
 
     async def list_assignments(
@@ -111,7 +102,6 @@ class AssignmentService:
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
         course_id: Optional[str] = None,
-        management_system_id: Optional[str] = None,
         current_student_id: Optional[str] = None,
         current_user_role: Optional[str] = None,
         page: Optional[int] = None,
@@ -127,7 +117,6 @@ class AssignmentService:
             teacher_id (Optional[str]): 教师ID。
             status (Optional[str]): 状态筛选条件或目标状态。
             course_id (Optional[str]): 课程ID。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
             current_student_id (Optional[str]): 当前学生ID。
             current_user_role (Optional[str]): 当前用户角色，用于控制权限或字段可见性。
             page (Optional[int]): 当前页码。
@@ -138,7 +127,6 @@ class AssignmentService:
         """
         course_id, course_ids = await self._resolve_assignment_filters(
             current_student_id=current_student_id,
-            management_system_id=management_system_id,
             course_id=course_id,
         )
         items = await self.repo.get_all(
@@ -146,23 +134,16 @@ class AssignmentService:
             limit,
             teacher_id,
             status,
-            management_system_id,
             course_id,
             course_ids,
         )
         total = await self.repo.count(
             teacher_id,
             status,
-            management_system_id,
             course_id,
             course_ids,
         )
-        custom_field_values_by_target = await CustomFieldService(self.repo.db).list_value_map_for_targets(
-            management_system_id,
-            "assignment",
-            [item.id for item in items],
-            viewer_role=current_user_role,
-        ) if management_system_id else {}
+        custom_field_values_by_target: dict[str, dict] = {}
         payload = build_paged_response(
             items=[
                 self._to_response(
@@ -180,7 +161,6 @@ class AssignmentService:
         self,
         assignment_in: AssignmentCreate,
         teacher_id: str,
-        management_system_id: str,
     ) -> AssignmentResponse:
         """
         功能描述：
@@ -189,47 +169,34 @@ class AssignmentService:
         参数：
             assignment_in (AssignmentCreate): 作业输入对象。
             teacher_id (str): 教师ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             AssignmentResponse: 返回创建后的结果对象。
         """
-        # 发布前必须先把课程关系解析成当前管理系统内的合法课程，避免作业落到越权课程上。
-        course_id = await self._resolve_course_id(assignment_in.course_id, management_system_id)
+        # 发布前必须先把课程关系解析成当前教师可维护的合法课程，避免作业落到越权课程上。
+        course_id = await self._resolve_course_id(assignment_in.course_id, teacher_id)
         # 作业与步骤中的附件在入库前先校验上传记录，避免保存后再出现“附件不存在”的脏数据。
         await self._ensure_attachment_uploads_exist(
-            management_system_id,
             attachments=assignment_in.attachments,
             instruction_steps=assignment_in.instruction_steps,
         )
         assignment = await self.repo.create(
             assignment_in,
             teacher_id,
-            management_system_id,
             course_id=course_id,
         )
         # 作业创建成功后立即回写附件归属，确保附件后续可随作业一起查询、删除和导出。
         await self._sync_attachment_uploads(
             assignment.id,
-            management_system_id,
             attachments=assignment_in.attachments,
             instruction_steps=assignment_in.instruction_steps,
         )
-        await CustomFieldService(self.repo.db).upsert_value_map(
-            management_system_id,
-            "assignment",
-            assignment.id,
-            teacher_id,
-            assignment_in.custom_field_values,
-        )
-        await self._sync_reminder_plans(assignment.id, management_system_id)
-        return await self.get_assignment(assignment.id, management_system_id)
+        await self._sync_reminder_plans(assignment.id)
+        return await self.get_assignment(assignment.id)
 
     async def update_assignment(
         self,
         id: str,
         assignment_in: AssignmentUpdate,
-        management_system_id: str,
     ) -> Optional[AssignmentResponse]:
         """
         功能描述：
@@ -238,12 +205,10 @@ class AssignmentService:
         参数：
             id (str): 目标记录ID。
             assignment_in (AssignmentUpdate): 作业输入对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[AssignmentResponse]: 返回更新后的结果对象；未命中时返回 None。
         """
-        assignment = await self.repo.get(id, management_system_id)
+        assignment = await self.repo.get(id)
         if not assignment:
             return None
 
@@ -255,7 +220,7 @@ class AssignmentService:
                 update={
                     "course_id": await self._resolve_course_id(
                         assignment_in.course_id,
-                        management_system_id,
+                        assignment.teacher_id,
                     )
                 }
             )
@@ -271,7 +236,6 @@ class AssignmentService:
             else assignment.instruction_steps
         )
         await self._ensure_attachment_uploads_exist(
-            management_system_id,
             attachments=next_attachments,
             instruction_steps=next_instruction_steps,
         )
@@ -279,34 +243,23 @@ class AssignmentService:
         # 仓储更新后再同步附件归属，避免旧附件关联未清理或新增附件未归档。
         await self._sync_attachment_uploads(
             updated_assignment.id,
-            management_system_id,
             attachments=updated_assignment.attachments,
             instruction_steps=updated_assignment.instruction_steps,
         )
-        if assignment_in.custom_field_values is not None:
-            await CustomFieldService(self.repo.db).upsert_value_map(
-                management_system_id,
-                "assignment",
-                updated_assignment.id,
-                updated_assignment.teacher_id,
-                assignment_in.custom_field_values,
-            )
-        await self._sync_reminder_plans(updated_assignment.id, management_system_id)
-        return await self.get_assignment(updated_assignment.id, management_system_id)
+        await self._sync_reminder_plans(updated_assignment.id)
+        return await self.get_assignment(updated_assignment.id)
 
-    async def delete_assignment(self, id: str, management_system_id: str) -> bool:
+    async def delete_assignment(self, id: str) -> bool:
         """
         功能描述：
             删除作业。
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             bool: 返回操作是否成功。
         """
-        assignment = await self.repo.get(id, management_system_id)
+        assignment = await self.repo.get(id)
         if not assignment:
             return False
 
@@ -317,7 +270,6 @@ class AssignmentService:
         self,
         id: str,
         event: AssignmentTransitionEvent,
-        management_system_id: str,
     ) -> Optional[AssignmentTransitionResponse]:
         """
         功能描述：
@@ -326,12 +278,10 @@ class AssignmentService:
         参数：
             id (str): 目标记录ID。
             event (AssignmentTransitionEvent): AssignmentTransitionEvent 类型的数据。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[AssignmentTransitionResponse]: 返回流转后的结果对象；未命中时返回 None。
         """
-        assignment = await self.repo.get(id, management_system_id)
+        assignment = await self.repo.get(id)
         if not assignment:
             return None
         from_status = AssignmentStatus(assignment.status)
@@ -339,7 +289,7 @@ class AssignmentService:
         assignment.status = transition_result.to_status
         await self.repo.commit_and_refresh(assignment)
         return AssignmentTransitionResponse(
-            assignment=await self.get_assignment(assignment.id, management_system_id),
+            assignment=await self.get_assignment(assignment.id),
             from_status=transition_result.from_status,
             to_status=transition_result.to_status,
             event=transition_result.event,
@@ -348,7 +298,6 @@ class AssignmentService:
     async def reach_deadline_assignments(
         self,
         now: Optional[datetime] = None,
-        management_system_id: Optional[str] = None,
     ) -> int:
         """
         功能描述：
@@ -356,13 +305,11 @@ class AssignmentService:
 
         参数：
             now (Optional[datetime]): Optional[datetime] 类型的数据。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
-
         返回值：
             int: 返回int类型的处理结果。
         """
         now = now or datetime.now()
-        items = await self.repo.list_published_due(now, management_system_id)
+        items = await self.repo.list_published_due(now)
         affected = 0
         for assignment in items:
             transition_result = self.state_machine.transition(
@@ -378,7 +325,6 @@ class AssignmentService:
     async def publish_assignment(
         self,
         id: str,
-        management_system_id: str,
         sender_user_id: str,
     ) -> Optional[AssignmentActionResponse]:
         """
@@ -387,13 +333,12 @@ class AssignmentService:
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
 
         返回值：
             Optional[AssignmentActionResponse]: 返回处理结果对象；无可用结果时返回 None。
         """
-        assignment = await self.repo.get(id, management_system_id)
+        assignment = await self.repo.get(id)
         if not assignment:
             return None
         if not assignment.course_id:
@@ -407,13 +352,12 @@ class AssignmentService:
         notification = self._build_publish_notification(assignment)
         # 通知人数需要按课程实际在班学生动态计算，不能直接用静态班级人数替代。
         affected = await self._notify_students(
-            management_system_id=management_system_id,
             sender_user_id=sender_user_id,
             payload=notification,
             assignment=assignment,
         )
         return AssignmentActionResponse(
-            assignment=await self.get_assignment(assignment.id, management_system_id),
+            assignment=await self.get_assignment(assignment.id),
             action="publish",
             affected_students=affected,
         )
@@ -422,7 +366,6 @@ class AssignmentService:
         self,
         id: str,
         body: AssignmentDelayRequest,
-        management_system_id: str,
         sender_user_id: str,
     ) -> Optional[AssignmentActionResponse]:
         """
@@ -432,31 +375,29 @@ class AssignmentService:
         参数：
             id (str): 目标记录ID。
             body (AssignmentDelayRequest): 接口请求体对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
 
         返回值：
             Optional[AssignmentActionResponse]: 返回处理结果对象；无可用结果时返回 None。
         """
-        assignment = await self.repo.get(id, management_system_id)
+        assignment = await self.repo.get(id)
         if not assignment:
             return None
         assignment.due_date = body.due_date
         if AssignmentStatus(assignment.status) in (AssignmentStatus.DEADLINE, AssignmentStatus.CLOSED):
             assignment.status = AssignmentStatus.PUBLISHED
         await self.repo.commit_and_refresh(assignment)
-        await self._sync_reminder_plans(assignment.id, management_system_id)
+        await self._sync_reminder_plans(assignment.id)
         affected = 0
         if body.notify_students:
             notification = self._build_delay_notification(assignment, body.reason)
             affected = await self._notify_students(
-                management_system_id=management_system_id,
                 sender_user_id=sender_user_id,
                 payload=notification,
                 assignment=assignment,
             )
         return AssignmentActionResponse(
-            assignment=await self.get_assignment(assignment.id, management_system_id),
+            assignment=await self.get_assignment(assignment.id),
             action="delay",
             affected_students=affected,
         )
@@ -465,7 +406,6 @@ class AssignmentService:
         self,
         id: str,
         body: AssignmentReminderRequest,
-        management_system_id: str,
         sender_user_id: str,
     ) -> Optional[AssignmentActionResponse]:
         """
@@ -475,31 +415,28 @@ class AssignmentService:
         参数：
             id (str): 目标记录ID。
             body (AssignmentReminderRequest): 接口请求体对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
 
         返回值：
             Optional[AssignmentActionResponse]: 返回处理结果对象；无可用结果时返回 None。
         """
-        assignment = await self.repo.get(id, management_system_id)
+        assignment = await self.repo.get(id)
         if not assignment:
             return None
         notification = self._build_reminder_notification(assignment, body)
         affected = await self._notify_students(
-            management_system_id=management_system_id,
             sender_user_id=sender_user_id,
             payload=notification,
             assignment=assignment,
         )
         return AssignmentActionResponse(
-            assignment=await self.get_assignment(assignment.id, management_system_id),
+            assignment=await self.get_assignment(assignment.id),
             action="remind",
             affected_students=affected,
         )
 
     async def _notify_students(
         self,
-        management_system_id: str,
         sender_user_id: str,
         payload: AssignmentNotificationPayload | None = None,
         title: Optional[str] = None,
@@ -512,7 +449,6 @@ class AssignmentService:
             通知学生。
 
         参数：
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
             payload (AssignmentNotificationPayload | None): 待处理的原始数据载荷。
             title (Optional[str]): 字符串结果。
@@ -529,7 +465,6 @@ class AssignmentService:
             only_pending=only_pending,
         )
         targets = await self._list_notification_targets(
-            management_system_id=management_system_id,
             assignment=assignment,
             only_pending=resolved_payload.only_pending,
             sender_user_id=sender_user_id,
@@ -541,7 +476,6 @@ class AssignmentService:
                 Message(
                     sender_id=sender_user_id,
                     receiver_id=target["user_id"],
-                    management_system_id=management_system_id,
                     title=resolved_payload.title,
                     content=resolved_payload.content,
                 )
@@ -552,7 +486,6 @@ class AssignmentService:
     async def _resolve_assignment_filters(
         self,
         current_student_id: Optional[str],
-        management_system_id: Optional[str],
         course_id: Optional[str],
     ) -> tuple[Optional[str], Optional[list[str]]]:
         """
@@ -561,18 +494,14 @@ class AssignmentService:
 
         参数：
             current_student_id (Optional[str]): 当前学生ID。
-            management_system_id (Optional[str]): 管理系统ID，用于限制数据作用域。
             course_id (Optional[str]): 课程ID。
 
         返回值：
             tuple[Optional[str], Optional[list[str]]]: 返回tuple[Optional[str], Optional[list[str]]]类型的处理结果。
         """
-        if not current_student_id or not management_system_id:
+        if not current_student_id:
             return course_id, None
-        accessible_course_ids = await self.course_repo.list_ids_for_student(
-            current_student_id,
-            management_system_id,
-        )
+        accessible_course_ids = await self.course_repo.list_ids_for_student(current_student_id)
         if course_id:
             if course_id in accessible_course_ids:
                 return course_id, None
@@ -581,7 +510,6 @@ class AssignmentService:
 
     async def _list_notification_targets(
         self,
-        management_system_id: str,
         assignment,
         only_pending: bool,
         sender_user_id: str,
@@ -591,7 +519,6 @@ class AssignmentService:
             按条件查询通知targets列表。
 
         参数：
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             assignment (Any): 作业。
             only_pending (bool): 布尔值结果。
             sender_user_id (str): 发送者用户ID。
@@ -605,14 +532,12 @@ class AssignmentService:
             )
         targets = await self._list_course_student_targets(
             assignment.course_id,
-            management_system_id,
             sender_user_id,
         )
         if not only_pending:
             return self._serialize_notification_targets(targets)
         submitted_student_ids = await self._list_submitted_student_ids(
             assignment.id,
-            management_system_id,
         )
         return self._serialize_notification_targets(
             self._filter_pending_targets(targets, submitted_student_ids)
@@ -646,7 +571,6 @@ class AssignmentService:
     async def _list_course_student_targets(
         self,
         course_id: str,
-        management_system_id: str,
         sender_user_id: str,
     ) -> list[AssignmentNotificationTarget]:
         """
@@ -655,7 +579,6 @@ class AssignmentService:
 
         参数：
             course_id (str): 课程ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
 
         返回值：
@@ -668,7 +591,6 @@ class AssignmentService:
             .join(User, User.id == Student.user_id)
             .where(
                 Course.id == course_id,
-                Course.management_system_id == management_system_id,
                 TeachingClassMember.status == TeachingClassMemberStatus.ACTIVE,
                 User.role == UserRole.STUDENT,
                 Student.user_id != sender_user_id,
@@ -680,7 +602,6 @@ class AssignmentService:
     async def _list_submitted_student_ids(
         self,
         assignment_id: str,
-        management_system_id: str,
     ) -> set[str]:
         """
         功能描述：
@@ -688,17 +609,12 @@ class AssignmentService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             set[str]: 返回set[str]类型的处理结果。
         """
         submitted_result = await self.repo.db.execute(
             select(Submission.student_id)
-            .where(
-                Submission.assignment_id == assignment_id,
-                Submission.management_system_id == management_system_id,
-            )
+            .where(Submission.assignment_id == assignment_id)
             .distinct()
         )
         return {row[0] for row in submitted_result.all()}
@@ -855,7 +771,7 @@ class AssignmentService:
     async def _resolve_course_id(
         self,
         requested_course_id: Optional[str],
-        management_system_id: str,
+        teacher_id: str,
     ) -> str:
         """
         功能描述：
@@ -863,27 +779,25 @@ class AssignmentService:
 
         参数：
             requested_course_id (Optional[str]): requested课程ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            teacher_id (str): 教师ID。
 
         返回值：
             str: 返回str类型的处理结果。
         """
         if not requested_course_id:
             raise ValueError("course_id 为必填")
-        course = await self.course_repo.get(requested_course_id, management_system_id)
-        if not course:
+        course = await self.course_repo.get(requested_course_id)
+        if not course or course.teacher_id != teacher_id:
             raise ValueError("课程不存在")
         return course.id
 
-    async def _sync_reminder_plans(self, assignment_id: str, management_system_id: str) -> None:
+    async def _sync_reminder_plans(self, assignment_id: str) -> None:
         """
         功能描述：
             同步提醒plans。
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             None: 无返回值。
         """
@@ -891,12 +805,10 @@ class AssignmentService:
 
         await AssignmentReminderService(self.repo.db).sync_plans_for_assignment(
             assignment_id,
-            management_system_id,
         )
 
     async def _ensure_attachment_uploads_exist(
         self,
-        management_system_id: str,
         attachments: Optional[list[AssignmentAttachment | dict]] = None,
         instruction_steps: Optional[list[AssignmentInstructionStep | dict]] = None,
     ) -> None:
@@ -905,7 +817,6 @@ class AssignmentService:
             确保附件存在，必要时自动补齐。
 
         参数：
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             attachments (Optional[list[AssignmentAttachment | dict]]): 列表结果。
             instruction_steps (Optional[list[AssignmentInstructionStep | dict]]): 列表结果。
 
@@ -916,14 +827,13 @@ class AssignmentService:
         if attachment_ids:
             service = AttachmentService(self.repo.db)
             for attachment_id in attachment_ids:
-                attachment = await service.repo.get(attachment_id, management_system_id)
+                attachment = await service.repo.get(attachment_id)
                 if not attachment:
                     raise ValueError(f"附件不存在: {attachment_id}")
 
     async def _sync_attachment_uploads(
         self,
         assignment_id: str,
-        management_system_id: str,
         attachments: Optional[list[AssignmentAttachment | dict]] = None,
         instruction_steps: Optional[list[AssignmentInstructionStep | dict]] = None,
     ) -> None:
@@ -933,7 +843,6 @@ class AssignmentService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             attachments (Optional[list[AssignmentAttachment | dict]]): 列表结果。
             instruction_steps (Optional[list[AssignmentInstructionStep | dict]]): 列表结果。
 
@@ -944,7 +853,7 @@ class AssignmentService:
         if attachment_ids:
             service = AttachmentService(self.repo.db)
             for attachment_id in attachment_ids:
-                attachment = await service.repo.get(attachment_id, management_system_id)
+                attachment = await service.repo.get(attachment_id)
                 if attachment:
                     attachment.owner_id = assignment_id
                     await service.repo.save()
@@ -995,7 +904,6 @@ class AssignmentService:
         return AssignmentResponse(
             id=item.id,
             teacher_id=item.teacher_id,
-            management_system_id=item.management_system_id,
             course_id=item.course_id,
             course_name=getattr(getattr(item, "course", None), "name", None),
             teaching_class_id=getattr(getattr(item, "course", None), "teaching_class_id", None),

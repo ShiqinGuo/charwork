@@ -36,36 +36,36 @@ class HanziService:
         self.dictionary_repo = HanziDictionaryRepository(db)
         self.ocr_service = OCRService()
 
-    async def get_hanzi(self, id: str, management_system_id: str) -> Optional[HanziResponse]:
+    async def get_hanzi(self, id: str, current_user_id: str) -> Optional[HanziResponse]:
         """
         功能描述：
             按条件获取汉字。
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            current_user_id (str): 当前用户ID，用于限制私有字库作用域。
 
         返回值：
             Optional[HanziResponse]: 返回查询到的结果对象；未命中时返回 None。
         """
-        hanzi = await self.repo.get(id, management_system_id)
+        hanzi = await self.repo.get(id, current_user_id)
         if hanzi:
             return self._to_response(hanzi)
         return None
 
-    async def get_hanzi_by_char(self, char: str, management_system_id: str) -> Optional[HanziResponse]:
+    async def get_hanzi_by_char(self, char: str, current_user_id: str) -> Optional[HanziResponse]:
         """
         功能描述：
             根据字符获取汉字实例。
 
         参数：
             char (str): 字符串结果。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            current_user_id (str): 当前用户ID，用于限制私有字库作用域。
 
         返回值：
             Optional[HanziResponse]: 返回查询到的结果对象；未命中时返回 None。
         """
-        hanzi = await self.repo.get_by_character(char, management_system_id)
+        hanzi = await self.repo.get_by_character(char, current_user_id)
         if hanzi:
             return self._to_response(hanzi)
         return None
@@ -81,7 +81,7 @@ class HanziService:
                          stroke_pattern: Optional[str] = None,
                          dataset_id: Optional[str] = None,
                          source: Optional[str] = None,
-                         management_system_id: Optional[str] = None,
+                         current_user_id: Optional[str] = None,
                          page: Optional[int] = None,
                          size: Optional[int] = None) -> HanziListResponse:
         items = await self.repo.get_all(
@@ -91,7 +91,7 @@ class HanziService:
             level=level,
             variant=variant,
             search=search,
-            management_system_id=management_system_id,
+            created_by_user_id=current_user_id,
             character=character,
             pinyin=pinyin,
             stroke_count=stroke_count,
@@ -104,7 +104,7 @@ class HanziService:
             level=level,
             variant=variant,
             search=search,
-            management_system_id=management_system_id,
+            created_by_user_id=current_user_id,
             character=character,
             pinyin=pinyin,
             stroke_count=stroke_count,
@@ -119,23 +119,23 @@ class HanziService:
         )
         return HanziListResponse(**payload)
 
-    async def create_hanzi(self, hanzi_in: HanziCreate, management_system_id: str) -> HanziResponse:
+    async def create_hanzi(self, hanzi_in: HanziCreate, current_user_id: str) -> HanziResponse:
         """
         功能描述：
             创建汉字。
 
         参数：
             hanzi_in (HanziCreate): 创建汉字的请求体。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            current_user_id (str): 当前用户ID，用于归属新建字库条目。
 
         返回值：
             HanziResponse: 返回创建的汉字对象。
         """
         prepared = await self._prepare_payload(hanzi_in)
-        hanzi = await self.repo.create(prepared, management_system_id)
+        hanzi = await self.repo.create(prepared, current_user_id)
         return self._to_response(hanzi)
 
-    async def update_hanzi(self, id: str, hanzi_in: HanziUpdate, management_system_id: str) -> Optional[HanziResponse]:
+    async def update_hanzi(self, id: str, hanzi_in: HanziUpdate, current_user_id: str) -> Optional[HanziResponse]:
         """
         功能描述：
             更新汉字。
@@ -143,12 +143,12 @@ class HanziService:
         参数：
             id (str): 目标记录ID。
             hanzi_in (HanziUpdate): 更新汉字的请求体。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            current_user_id (str): 当前用户ID，用于限制私有字库作用域。
 
         返回值：
             Optional[HanziResponse]: 返回更新后的汉字对象；未命中时返回 None。
         """
-        hanzi = await self.repo.get(id, management_system_id)
+        hanzi = await self.repo.get(id, current_user_id)
         if not hanzi:
             return None
 
@@ -156,19 +156,19 @@ class HanziService:
         updated_hanzi = await self.repo.update(hanzi, prepared)
         return self._to_response(updated_hanzi)
 
-    async def delete_hanzi(self, id: str, management_system_id: str) -> bool:
+    async def delete_hanzi(self, id: str, current_user_id: str) -> bool:
         """
         功能描述：
             删除汉字。
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            current_user_id (str): 当前用户ID，用于限制私有字库作用域。
 
         返回值：
             bool: 返回操作是否成功。
         """
-        hanzi = await self.repo.get(id, management_system_id)
+        hanzi = await self.repo.get(id, current_user_id)
         if not hanzi:
             return False
 
@@ -197,11 +197,11 @@ class HanziService:
         stroke_pattern: str,
         skip: int = 0,
         limit: int = 20,
-        management_system_id: Optional[str] = None,
+        current_user_id: Optional[str] = None,
         page: Optional[int] = None,
         size: Optional[int] = None,
     ) -> HanziListResponse:
-        items = await self.repo.search_by_stroke_order(stroke_pattern, skip, limit, management_system_id)
+        items = await self.repo.search_by_stroke_order(stroke_pattern, skip, limit, current_user_id)
         payload = build_paged_response(
             items=[self._to_response(item) for item in items],
             total=len(items),
@@ -334,7 +334,6 @@ class HanziService:
             comment=item.comment,
             variant=item.variant,
             standard_image=item.standard_image,
-            management_system_id=item.management_system_id,
             created_at=str(item.created_at) if item.created_at else None,
             updated_at=str(item.updated_at) if item.updated_at else None,
         )

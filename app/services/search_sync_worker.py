@@ -12,16 +12,15 @@ import aio_pika
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.services.cross_search_service import CrossSearchService
 from app.services.hanzi_dictionary_search_service import HanziDictionarySearchService
-from app.services.search_registry import (
-    DICTIONARY_SEARCH_TABLE,
-    SEARCH_MODULE_REGISTRY,
-    get_configured_search_sync_tables,
-)
 
 
 logger = logging.getLogger(__name__)
+DICTIONARY_SEARCH_TABLE = "hanzi_dictionary"
+
+
+def get_configured_search_sync_tables() -> set[str]:
+    return {item.strip() for item in settings.SEARCH_SYNC_CANAL_TABLES.split(",") if item.strip()}
 
 
 class SearchSyncWorker:
@@ -37,8 +36,7 @@ class SearchSyncWorker:
             None: 无返回值。
         """
         self.allowed_tables = get_configured_search_sync_tables()
-        self.cross_search_tables = {table for table in self.allowed_tables if table in SEARCH_MODULE_REGISTRY}
-        self.unregistered_tables = self.allowed_tables - self.cross_search_tables - {DICTIONARY_SEARCH_TABLE}
+        self.unregistered_tables = self.allowed_tables - {DICTIONARY_SEARCH_TABLE}
         self.allowed_schema = settings.SEARCH_SYNC_CANAL_SCHEMA or settings.MYSQL_DB
         for table in sorted(self.unregistered_tables):
             logger.warning("检索同步监听配置了未注册表：%s", table)
@@ -85,13 +83,10 @@ class SearchSyncWorker:
             if not changes:
                 return
             async with AsyncSessionLocal() as db:
-                cross_search_service = CrossSearchService(db)
                 hanzi_dictionary_search_service = HanziDictionarySearchService(db)
                 for table, operation, row in changes:
                     if table == DICTIONARY_SEARCH_TABLE:
                         await hanzi_dictionary_search_service.apply_cdc_change(operation, row)
-                    elif table in self.cross_search_tables:
-                        await cross_search_service.apply_cdc_change(table, operation, row)
 
     def _parse_json(self, body: bytes) -> dict[str, Any] | list[dict[str, Any]] | None:
         """

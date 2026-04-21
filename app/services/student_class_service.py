@@ -506,45 +506,6 @@ class StudentClassService:
             "graded_at": submission.graded_at,
         }
 
-    async def get_ai_feedback(
-        self, student_id: str, submission_id: str
-    ) -> dict:
-        """
-        功能描述：
-            获取 AI 反馈。
-
-        参数：
-            student_id (str): 学生ID。
-            submission_id (str): 提交ID。
-
-        返回值：
-            dict: 返回包含 AI 反馈的字典。
-
-        异常：
-            ValueError: 提交不存在、无权限访问或反馈不存在时抛出。
-        """
-        submission_repo = SubmissionRepository(self.db)
-        submission = await submission_repo.get(submission_id)
-
-        if not submission:
-            raise ValueError("提交不存在")
-
-        # 验证是学生自己的提交
-        if submission.student_id != student_id:
-            raise ValueError("无权限访问")
-
-        # 获取 AI 反馈
-        if not submission.ai_feedback:
-            raise ValueError("反馈不存在")
-
-        return {
-            "id": submission.id,
-            "submission_id": submission_id,
-            "feedback": submission.ai_feedback,
-            "created_at": submission.submitted_at,
-            "model": "claude",  # TODO: 从配置或反馈数据中获取
-        }
-
     async def get_teacher_feedback(
         self, student_id: str, submission_id: str
     ) -> dict:

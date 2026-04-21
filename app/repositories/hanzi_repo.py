@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hanzi import Hanzi
@@ -13,10 +13,21 @@ class HanziRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def _apply_owner_scope(query, created_by_user_id: Optional[str] = None):
+        if not created_by_user_id:
+            return query
+        return query.where(
+            or_(
+                Hanzi.created_by_user_id == created_by_user_id,
+                Hanzi.created_by_user_id.is_(None),
+            )
+        )
+
     def _apply_filters(
         self,
         query,
-        management_system_id: Optional[str] = None,
+        created_by_user_id: Optional[str] = None,
         structure: Optional[str] = None,
         level: Optional[str] = None,
         variant: Optional[str] = None,
@@ -31,8 +42,7 @@ class HanziRepository:
         if dataset_id:
             query = query.join(HanziDatasetItem, HanziDatasetItem.hanzi_id == Hanzi.id)
             query = query.where(HanziDatasetItem.dataset_id == dataset_id)
-        if management_system_id:
-            query = query.where(Hanzi.management_system_id == management_system_id)
+        query = self._apply_owner_scope(query, created_by_user_id)
         if structure:
             query = query.where(Hanzi.structure == structure)
         if level:
@@ -75,17 +85,15 @@ class HanziRepository:
             query = query.where(or_(*conditions))
         return query
 
-    async def get(self, id: str, management_system_id: Optional[str] = None) -> Optional[Hanzi]:
+    async def get(self, id: str, created_by_user_id: Optional[str] = None) -> Optional[Hanzi]:
         query = select(Hanzi).where(Hanzi.id == id)
-        if management_system_id:
-            query = query.where(Hanzi.management_system_id == management_system_id)
+        query = self._apply_owner_scope(query, created_by_user_id)
         result = await self.db.execute(query)
         return result.scalars().first()
 
-    async def get_by_character(self, character: str, management_system_id: Optional[str] = None) -> Optional[Hanzi]:
+    async def get_by_character(self, character: str, created_by_user_id: Optional[str] = None) -> Optional[Hanzi]:
         query = select(Hanzi).where(Hanzi.character == character)
-        if management_system_id:
-            query = query.where(Hanzi.management_system_id == management_system_id)
+        query = self._apply_owner_scope(query, created_by_user_id)
         result = await self.db.execute(query)
         return result.scalars().first()
 
@@ -97,7 +105,7 @@ class HanziRepository:
         level: Optional[str] = None,
         variant: Optional[str] = None,
         search: Optional[str] = None,
-        management_system_id: Optional[str] = None,
+        created_by_user_id: Optional[str] = None,
         character: Optional[str] = None,
         pinyin: Optional[str] = None,
         stroke_count: Optional[int] = None,
@@ -108,7 +116,7 @@ class HanziRepository:
         query = select(Hanzi)
         query = self._apply_filters(
             query,
-            management_system_id=management_system_id,
+            created_by_user_id=created_by_user_id,
             structure=structure,
             level=level,
             variant=variant,
@@ -129,13 +137,13 @@ class HanziRepository:
         stroke_pattern: str,
         skip: int = 0,
         limit: int = 100,
-        management_system_id: Optional[str] = None,
+        created_by_user_id: Optional[str] = None,
         dataset_id: Optional[str] = None,
     ) -> List[Hanzi]:
         return await self.get_all(
             skip=skip,
             limit=limit,
-            management_system_id=management_system_id,
+            created_by_user_id=created_by_user_id,
             stroke_pattern=stroke_pattern,
             dataset_id=dataset_id,
         )
@@ -146,7 +154,7 @@ class HanziRepository:
         level: Optional[str] = None,
         variant: Optional[str] = None,
         search: Optional[str] = None,
-        management_system_id: Optional[str] = None,
+        created_by_user_id: Optional[str] = None,
         character: Optional[str] = None,
         pinyin: Optional[str] = None,
         stroke_count: Optional[int] = None,
@@ -157,7 +165,7 @@ class HanziRepository:
         query = select(func.count()).select_from(Hanzi)
         query = self._apply_filters(
             query,
-            management_system_id=management_system_id,
+            created_by_user_id=created_by_user_id,
             structure=structure,
             level=level,
             variant=variant,
@@ -172,9 +180,9 @@ class HanziRepository:
         result = await self.db.execute(query)
         return int(result.scalar() or 0)
 
-    async def create(self, hanzi_in: HanziCreate, management_system_id: str) -> Hanzi:
+    async def create(self, hanzi_in: HanziCreate, created_by_user_id: str) -> Hanzi:
         payload = hanzi_in.model_dump()
-        payload["management_system_id"] = management_system_id
+        payload["created_by_user_id"] = created_by_user_id
         payload.pop("char", None)
         hanzi = Hanzi(**payload)
         self.db.add(hanzi)
@@ -185,7 +193,7 @@ class HanziRepository:
     async def update(self, hanzi: Hanzi, hanzi_in: HanziUpdate) -> Hanzi:
         update_data = hanzi_in.model_dump(exclude_unset=True)
         update_data.pop("char", None)
-        update_data.pop("management_system_id", None)
+        update_data.pop("created_by_user_id", None)
         for key, value in update_data.items():
             setattr(hanzi, key, value)
         await self.db.commit()
@@ -197,11 +205,19 @@ class HanziRepository:
         await self.db.commit()
 
     async def get_stroke_count(self, character: str) -> Optional[int]:
-        query = select(Hanzi.stroke_count).where(Hanzi.character == character)
+        query = (
+            select(Hanzi.stroke_count)
+            .where(Hanzi.character == character)
+            .order_by(Hanzi.created_by_user_id.is_not(None))
+        )
         result = await self.db.execute(query)
         return result.scalar()
 
     async def get_stroke_order(self, character: str) -> Optional[str]:
-        query = select(Hanzi.stroke_order).where(Hanzi.character == character)
+        query = (
+            select(Hanzi.stroke_order)
+            .where(Hanzi.character == character)
+            .order_by(Hanzi.created_by_user_id.is_not(None))
+        )
         result = await self.db.execute(query)
         return result.scalar()

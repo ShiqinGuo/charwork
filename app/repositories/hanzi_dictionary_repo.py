@@ -321,14 +321,14 @@ class HanziDatasetRepository:
         """
         self.db = db
 
-    async def get(self, dataset_id: str, management_system_id: str) -> Optional[HanziDataset]:
+    async def get(self, dataset_id: str, created_by_user_id: str) -> Optional[HanziDataset]:
         """
         功能描述：
             获取HanziDatasetRepository。
 
         参数：
             dataset_id (str): 数据集ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            created_by_user_id (str): 数据集创建者用户ID。
 
         返回值：
             Optional[HanziDataset]: 返回处理结果对象；无可用结果时返回 None。
@@ -336,18 +336,18 @@ class HanziDatasetRepository:
         result = await self.db.execute(
             select(HanziDataset).where(
                 HanziDataset.id == dataset_id,
-                HanziDataset.management_system_id == management_system_id,
+                HanziDataset.created_by_user_id == created_by_user_id,
             )
         )
         return result.scalars().first()
 
-    async def list_all(self, management_system_id: str, skip: int, limit: int) -> list[HanziDataset]:
+    async def list_all(self, created_by_user_id: str, skip: int, limit: int) -> list[HanziDataset]:
         """
         功能描述：
             按条件查询all列表。
 
         参数：
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            created_by_user_id (str): 数据集创建者用户ID。
             skip (int): 分页偏移量。
             limit (int): 单次查询的最大返回数量。
 
@@ -356,27 +356,27 @@ class HanziDatasetRepository:
         """
         result = await self.db.execute(
             select(HanziDataset)
-            .where(HanziDataset.management_system_id == management_system_id)
+            .where(HanziDataset.created_by_user_id == created_by_user_id)
             .order_by(HanziDataset.updated_at.desc())
             .offset(skip)
             .limit(limit)
         )
         return result.scalars().all()
 
-    async def count_all(self, management_system_id: str) -> int:
+    async def count_all(self, created_by_user_id: str) -> int:
         """
         功能描述：
             统计all数量。
 
         参数：
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
+            created_by_user_id (str): 数据集创建者用户ID。
 
         返回值：
             int: 返回统计结果。
         """
         result = await self.db.execute(
             select(func.count()).select_from(HanziDataset).where(
-                HanziDataset.management_system_id == management_system_id)
+                HanziDataset.created_by_user_id == created_by_user_id)
         )
         return int(result.scalar() or 0)
 
@@ -392,7 +392,7 @@ class HanziDatasetRepository:
     async def list_items(
         self,
         dataset_id: str,
-        management_system_id: str,
+        created_by_user_id: str,
         skip: int,
         limit: int,
     ) -> list[Hanzi]:
@@ -402,8 +402,11 @@ class HanziDatasetRepository:
             .join(HanziDataset, HanziDataset.id == HanziDatasetItem.dataset_id)
             .where(
                 HanziDatasetItem.dataset_id == dataset_id,
-                HanziDataset.management_system_id == management_system_id,
-                Hanzi.management_system_id == management_system_id,
+                HanziDataset.created_by_user_id == created_by_user_id,
+                or_(
+                    Hanzi.created_by_user_id == created_by_user_id,
+                    Hanzi.created_by_user_id.is_(None),
+                ),
             )
             .order_by(Hanzi.updated_at.desc())
             .offset(skip)
@@ -411,7 +414,7 @@ class HanziDatasetRepository:
         )
         return result.scalars().all()
 
-    async def count_items_in_scope(self, dataset_id: str, management_system_id: str) -> int:
+    async def count_items_in_scope(self, dataset_id: str, created_by_user_id: str) -> int:
         result = await self.db.execute(
             select(func.count())
             .select_from(HanziDatasetItem)
@@ -419,8 +422,11 @@ class HanziDatasetRepository:
             .join(HanziDataset, HanziDataset.id == HanziDatasetItem.dataset_id)
             .where(
                 HanziDatasetItem.dataset_id == dataset_id,
-                HanziDataset.management_system_id == management_system_id,
-                Hanzi.management_system_id == management_system_id,
+                HanziDataset.created_by_user_id == created_by_user_id,
+                or_(
+                    Hanzi.created_by_user_id == created_by_user_id,
+                    Hanzi.created_by_user_id.is_(None),
+                ),
             )
         )
         return int(result.scalar() or 0)

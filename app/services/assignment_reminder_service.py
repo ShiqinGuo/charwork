@@ -150,7 +150,6 @@ class AssignmentReminderService:
     async def list_plans(
         self,
         assignment_id: str,
-        management_system_id: str,
     ) -> AssignmentReminderPlanListResponse:
         """
         功能描述：
@@ -158,12 +157,10 @@ class AssignmentReminderService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             AssignmentReminderPlanListResponse: 返回列表或分页查询结果。
         """
-        assignment = await self.assignment_repo.get(assignment_id, management_system_id)
+        assignment = await self.assignment_repo.get(assignment_id)
         if not assignment:
             raise ValueError("作业不存在")
         items = await self.repo.list_plans(assignment_id)
@@ -176,7 +173,6 @@ class AssignmentReminderService:
     async def create_plan(
         self,
         assignment_id: str,
-        management_system_id: str,
         current_user_id: str,
         body: AssignmentReminderPlanCreate,
     ) -> AssignmentReminderPlanResponse:
@@ -186,21 +182,19 @@ class AssignmentReminderService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             current_user_id (str): 当前用户ID。
             body (AssignmentReminderPlanCreate): 接口请求体对象。
 
         返回值：
             AssignmentReminderPlanResponse: 返回创建后的结果对象。
         """
-        assignment = await self.assignment_repo.get(assignment_id, management_system_id)
+        assignment = await self.assignment_repo.get(assignment_id)
         if not assignment:
             raise ValueError("作业不存在")
         if not assignment.course_id:
             raise ValueError("作业必须绑定课程后才能配置提醒")
         plan = self._build_plan(
             assignment=assignment,
-            management_system_id=management_system_id,
             current_user_id=current_user_id,
             body=body,
         )
@@ -213,7 +207,6 @@ class AssignmentReminderService:
     async def sync_plans_for_assignment(
         self,
         assignment_id: str,
-        management_system_id: str,
     ) -> AssignmentReminderPlanListResponse:
         """
         功能描述：
@@ -221,12 +214,10 @@ class AssignmentReminderService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             AssignmentReminderPlanListResponse: 返回AssignmentReminderPlanListResponse类型的处理结果。
         """
-        assignment = await self.assignment_repo.get(assignment_id, management_system_id)
+        assignment = await self.assignment_repo.get(assignment_id)
         if not assignment:
             raise ValueError("作业不存在")
         items = await self.repo.list_plans(assignment_id)
@@ -244,7 +235,6 @@ class AssignmentReminderService:
     async def list_executions(
         self,
         assignment_id: str,
-        management_system_id: str,
     ) -> AssignmentReminderExecutionListResponse:
         """
         功能描述：
@@ -252,12 +242,10 @@ class AssignmentReminderService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             AssignmentReminderExecutionListResponse: 返回列表或分页查询结果。
         """
-        assignment = await self.assignment_repo.get(assignment_id, management_system_id)
+        assignment = await self.assignment_repo.get(assignment_id)
         if not assignment:
             raise ValueError("作业不存在")
         items = await self.repo.list_executions(assignment_id)
@@ -270,7 +258,6 @@ class AssignmentReminderService:
     async def create_execution(
         self,
         assignment_id: str,
-        management_system_id: str,
         body: AssignmentReminderExecutionCreate,
     ) -> AssignmentReminderExecutionResponse:
         """
@@ -279,13 +266,12 @@ class AssignmentReminderService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             body (AssignmentReminderExecutionCreate): 接口请求体对象。
 
         返回值：
             AssignmentReminderExecutionResponse: 返回创建后的结果对象。
         """
-        assignment = await self.assignment_repo.get(assignment_id, management_system_id)
+        assignment = await self.assignment_repo.get(assignment_id)
         if not assignment:
             raise ValueError("作业不存在")
         plan = await self.repo.get_plan(body.plan_id)
@@ -294,7 +280,6 @@ class AssignmentReminderService:
         execution = AssignmentReminderExecution(
             plan_id=body.plan_id,
             assignment_id=assignment_id,
-            management_system_id=management_system_id,
             scheduled_at=body.scheduled_at,
             executed_at=body.executed_at,
             status=body.status,
@@ -312,7 +297,6 @@ class AssignmentReminderService:
     async def execute_due_plans(
         self,
         assignment_id: str,
-        management_system_id: str,
         sender_user_id: str,
         now: datetime | None = None,
     ) -> AssignmentReminderExecutionListResponse:
@@ -322,22 +306,20 @@ class AssignmentReminderService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
             now (datetime | None): datetime | None 类型的数据。
 
         返回值：
             AssignmentReminderExecutionListResponse: 返回AssignmentReminderExecutionListResponse类型的处理结果。
         """
-        assignment = await self.assignment_repo.get(assignment_id, management_system_id)
+        assignment = await self.assignment_repo.get(assignment_id)
         if not assignment:
             raise ValueError("作业不存在")
         execution_time = now or datetime.now()
-        plans = await self.repo.list_due_pending_plans(assignment_id, management_system_id, execution_time)
+        plans = await self.repo.list_due_pending_plans(assignment_id, execution_time)
         return await self._execute_plans(
             assignment=assignment,
             plans=plans,
-            management_system_id=management_system_id,
             sender_user_id=sender_user_id,
             execution_time=execution_time,
         )
@@ -345,7 +327,6 @@ class AssignmentReminderService:
     async def execute_plan(
         self,
         plan_id: str,
-        management_system_id: str,
         sender_user_id: str,
         expected_version: int,
         now: datetime | None = None,
@@ -356,7 +337,6 @@ class AssignmentReminderService:
 
         参数：
             plan_id (str): 计划ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
             expected_version (int): 整数结果。
             now (datetime | None): datetime | None 类型的数据。
@@ -365,9 +345,9 @@ class AssignmentReminderService:
             AssignmentReminderExecutionListResponse: 返回AssignmentReminderExecutionListResponse类型的处理结果。
         """
         plan = await self.repo.get_plan(plan_id)
-        if not plan or plan.management_system_id != management_system_id:
+        if not plan:
             return AssignmentReminderExecutionListResponse(total=0, items=[])
-        assignment = await self.assignment_repo.get(plan.assignment_id, management_system_id)
+        assignment = await self.assignment_repo.get(plan.assignment_id)
         if not assignment:
             self._apply_plan_transition(plan, "missing_assignment")
             await self.repo.save()
@@ -378,7 +358,6 @@ class AssignmentReminderService:
         return await self._execute_plans(
             assignment=assignment,
             plans=[plan],
-            management_system_id=management_system_id,
             sender_user_id=sender_user_id,
             execution_time=execution_time,
         )
@@ -386,7 +365,6 @@ class AssignmentReminderService:
     def _build_plan(
         self,
         assignment: Assignment,
-        management_system_id: str,
         current_user_id: str,
         body: AssignmentReminderPlanCreate,
     ) -> AssignmentReminderPlan:
@@ -396,7 +374,6 @@ class AssignmentReminderService:
 
         参数：
             assignment (Assignment): Assignment 类型的数据。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             current_user_id (str): 当前用户ID。
             body (AssignmentReminderPlanCreate): 接口请求体对象。
 
@@ -406,7 +383,6 @@ class AssignmentReminderService:
         return AssignmentReminderPlan(
             assignment_id=assignment.id,
             course_id=assignment.course_id,
-            management_system_id=management_system_id,
             created_by_user_id=current_user_id,
             name=body.name,
             version=body.version,
@@ -450,7 +426,6 @@ class AssignmentReminderService:
         self,
         assignment: Assignment,
         plans: list[AssignmentReminderPlan],
-        management_system_id: str,
         sender_user_id: str,
         execution_time: datetime,
     ) -> AssignmentReminderExecutionListResponse:
@@ -461,7 +436,6 @@ class AssignmentReminderService:
         参数：
             assignment (Assignment): Assignment 类型的数据。
             plans (list[AssignmentReminderPlan]): 列表结果。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
             execution_time (datetime): datetime 类型的数据。
 
@@ -470,14 +444,13 @@ class AssignmentReminderService:
         """
         if not plans:
             return AssignmentReminderExecutionListResponse(total=0, items=[])
-        snapshot = await self._build_target_snapshot(assignment.id, assignment.course_id, management_system_id)
+        snapshot = await self._build_target_snapshot(assignment.id, assignment.course_id)
         execution_items: list[AssignmentReminderExecution] = []
         for plan in plans:
             execution = await self._execute_single_plan(
                 assignment=assignment,
                 plan=plan,
                 snapshot=snapshot,
-                management_system_id=management_system_id,
                 sender_user_id=sender_user_id,
                 execution_time=execution_time,
             )
@@ -494,7 +467,6 @@ class AssignmentReminderService:
         self,
         assignment_id: str,
         course_id: str | None,
-        management_system_id: str,
     ) -> ReminderTargetSnapshot:
         """
         功能描述：
@@ -503,13 +475,11 @@ class AssignmentReminderService:
         参数：
             assignment_id (str): 作业ID。
             course_id (str | None): 课程ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             ReminderTargetSnapshot: 返回ReminderTargetSnapshot类型的处理结果。
         """
         targets = await self._list_target_students(course_id)
-        submitted_student_ids = await self._list_submitted_student_ids(assignment_id, management_system_id)
+        submitted_student_ids = await self._list_submitted_student_ids(assignment_id)
         pending_targets = self._filter_pending_targets(targets, submitted_student_ids)
         return ReminderTargetSnapshot(
             targets=targets,
@@ -522,7 +492,6 @@ class AssignmentReminderService:
         assignment: Assignment,
         plan: AssignmentReminderPlan,
         snapshot: ReminderTargetSnapshot,
-        management_system_id: str,
         sender_user_id: str,
         execution_time: datetime,
     ) -> AssignmentReminderExecution:
@@ -534,7 +503,6 @@ class AssignmentReminderService:
             assignment (Assignment): Assignment 类型的数据。
             plan (AssignmentReminderPlan): AssignmentReminderPlan 类型的数据。
             snapshot (ReminderTargetSnapshot): ReminderTargetSnapshot 类型的数据。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
             execution_time (datetime): datetime 类型的数据。
 
@@ -545,7 +513,6 @@ class AssignmentReminderService:
             plan,
             assignment,
             snapshot.pending_targets,
-            management_system_id,
             sender_user_id,
         )
         self._persist_messages(messages)
@@ -553,7 +520,6 @@ class AssignmentReminderService:
             assignment=assignment,
             plan=plan,
             snapshot=snapshot,
-            management_system_id=management_system_id,
             execution_time=execution_time,
         )
         await self.repo.add_execution(execution)
@@ -631,7 +597,6 @@ class AssignmentReminderService:
         plan: AssignmentReminderPlan,
         assignment: Assignment,
         targets: list[ReminderTarget],
-        management_system_id: str,
         sender_user_id: str,
     ) -> list[Message]:
         """
@@ -642,7 +607,6 @@ class AssignmentReminderService:
             plan (AssignmentReminderPlan): AssignmentReminderPlan 类型的数据。
             assignment (Assignment): Assignment 类型的数据。
             targets (list[ReminderTarget]): 列表结果。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
 
         返回值：
@@ -654,7 +618,6 @@ class AssignmentReminderService:
             Message(
                 sender_id=sender_user_id,
                 receiver_id=target.user_id,
-                management_system_id=management_system_id,
                 title=title,
                 content=content,
             )
@@ -666,7 +629,6 @@ class AssignmentReminderService:
         assignment: Assignment,
         plan: AssignmentReminderPlan,
         snapshot: ReminderTargetSnapshot,
-        management_system_id: str,
         execution_time: datetime,
     ) -> AssignmentReminderExecution:
         """
@@ -677,7 +639,6 @@ class AssignmentReminderService:
             assignment (Assignment): Assignment 类型的数据。
             plan (AssignmentReminderPlan): AssignmentReminderPlan 类型的数据。
             snapshot (ReminderTargetSnapshot): ReminderTargetSnapshot 类型的数据。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             execution_time (datetime): datetime 类型的数据。
 
         返回值：
@@ -686,7 +647,6 @@ class AssignmentReminderService:
         return AssignmentReminderExecution(
             plan_id=plan.id,
             assignment_id=assignment.id,
-            management_system_id=management_system_id,
             scheduled_at=plan.remind_at,
             executed_at=execution_time,
             status=self._resolve_execution_status(snapshot),
@@ -757,7 +717,7 @@ class AssignmentReminderService:
         from app.tasks.notification_tasks import batch_send_reminder
 
         async_result = batch_send_reminder.apply_async(
-            args=[plan.id, plan.management_system_id, plan.created_by_user_id, plan.version],
+            args=[plan.id, plan.created_by_user_id, plan.version],
             eta=plan.remind_at,
         )
         plan.scheduled_task_id = async_result.id
@@ -936,7 +896,6 @@ class AssignmentReminderService:
     async def _list_submitted_student_ids(
         self,
         assignment_id: str,
-        management_system_id: str,
     ) -> set[str]:
         """
         功能描述：
@@ -944,8 +903,6 @@ class AssignmentReminderService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             set[str]: 返回set[str]类型的处理结果。
         """
@@ -953,7 +910,6 @@ class AssignmentReminderService:
             select(Submission.student_id)
             .where(
                 Submission.assignment_id == assignment_id,
-                Submission.management_system_id == management_system_id,
             )
             .distinct()
         )
@@ -1013,7 +969,6 @@ class AssignmentReminderService:
             id=item.id,
             assignment_id=item.assignment_id,
             course_id=item.course_id,
-            management_system_id=item.management_system_id,
             created_by_user_id=item.created_by_user_id,
             name=item.name,
             remind_at=item.remind_at,
@@ -1044,7 +999,6 @@ class AssignmentReminderService:
             id=item.id,
             plan_id=item.plan_id,
             assignment_id=item.assignment_id,
-            management_system_id=item.management_system_id,
             scheduled_at=item.scheduled_at,
             executed_at=item.executed_at,
             status=item.status,

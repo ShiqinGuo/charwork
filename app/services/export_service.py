@@ -29,7 +29,7 @@ class ExportService:
         level: Optional[str] = None,
         variant: Optional[str] = None,
         search: Optional[str] = None,
-        management_system_id: Optional[str] = None,
+        current_user_id: Optional[str] = None,
         character: Optional[str] = None,
         pinyin: Optional[str] = None,
         stroke_count: Optional[int] = None,
@@ -53,7 +53,7 @@ class ExportService:
             "comment",
             "variant",
             "standard_image",
-            "management_system_id",
+            "created_by_user_id",
             "created_at",
             "updated_at",
         }
@@ -67,7 +67,7 @@ class ExportService:
             level=level,
             variant=variant,
             search=search,
-            management_system_id=management_system_id,
+            created_by_user_id=current_user_id,
             character=character,
             pinyin=pinyin,
             stroke_count=stroke_count,
@@ -96,15 +96,15 @@ class ExportService:
             "total": len(rows),
         }
 
-    async def export_dataset_package(self, dataset_id: str, management_system_id: str) -> dict:
+    async def export_dataset_package(self, dataset_id: str, current_user_id: str) -> dict:
         os.makedirs(self.output_dir, exist_ok=True)
-        dataset = await self.dataset_repo.get(dataset_id, management_system_id)
+        dataset = await self.dataset_repo.get(dataset_id, current_user_id)
         if not dataset:
             raise ValueError("数据集不存在")
         items = await self.repo.get_all(
             skip=0,
             limit=100000,
-            management_system_id=management_system_id,
+            created_by_user_id=current_user_id,
             dataset_id=dataset_id,
         )
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")

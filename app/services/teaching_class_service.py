@@ -8,7 +8,6 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.management_system import ManagementSystemAccessRole, UserManagementSystem
 from app.models.teaching_class import (
     TeachingClass,
     TeachingClassJoinToken,
@@ -18,7 +17,6 @@ from app.models.teaching_class import (
 )
 from app.models.user import User
 from app.repositories.course_repo import CourseRepository
-from app.repositories.management_system_repo import ManagementSystemRepository
 from app.repositories.teaching_class_repo import TeachingClassRepository
 from app.schemas.course import CourseSummary
 from app.schemas.teaching_class import (
@@ -50,21 +48,18 @@ class TeachingClassService:
         self.db = db
         self.repo = TeachingClassRepository(db)
         self.course_repo = CourseRepository(db)
-        self.management_system_repo = ManagementSystemRepository(db)
 
-    async def get_teaching_class(self, id: str, management_system_id: str) -> TeachingClassResponse | None:
+    async def get_teaching_class(self, id: str) -> TeachingClassResponse | None:
         """
         功能描述：
             按条件获取教学班级。
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             TeachingClassResponse | None: 返回查询到的结果对象；未命中时返回 None。
         """
-        item = await self.repo.get(id, management_system_id)
+        item = await self.repo.get(id)
         if not item:
             return None
         return self._to_response(item)
@@ -73,7 +68,6 @@ class TeachingClassService:
         self,
         skip: int = 0,
         limit: int = 20,
-        management_system_id: str | None = None,
         teacher_id: str | None = None,
         status: str | None = None,
         page: int | None = None,
@@ -86,7 +80,6 @@ class TeachingClassService:
         参数：
             skip (int): 分页偏移量。
             limit (int): 单次查询的最大返回数量。
-            management_system_id (str | None): 管理系统ID，用于限制数据作用域。
             teacher_id (str | None): 教师ID。
             status (str | None): 状态筛选条件或目标状态。
             page (int | None): 当前页码。
@@ -98,12 +91,10 @@ class TeachingClassService:
         items = await self.repo.get_all(
             skip=skip,
             limit=limit,
-            management_system_id=management_system_id,
             teacher_id=teacher_id,
             status=status,
         )
         total = await self.repo.count(
-            management_system_id=management_system_id,
             teacher_id=teacher_id,
             status=status,
         )
@@ -118,7 +109,6 @@ class TeachingClassService:
         self,
         body: TeachingClassCreate,
         teacher_id: str,
-        management_system_id: str,
     ) -> TeachingClassResponse:
         """
         功能描述：
@@ -127,13 +117,10 @@ class TeachingClassService:
         参数：
             body (TeachingClassCreate): 接口请求体对象。
             teacher_id (str): 教师ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             TeachingClassResponse: 返回创建后的结果对象。
         """
         item = TeachingClass(
-            management_system_id=management_system_id,
             teacher_id=teacher_id,
             name=body.name,
             description=body.description,
@@ -143,19 +130,17 @@ class TeachingClassService:
         created = await self.repo.create(item)
         return self._to_response(created)
 
-    async def list_members(self, teaching_class_id: str, management_system_id: str) -> TeachingClassMemberListResponse:
+    async def list_members(self, teaching_class_id: str) -> TeachingClassMemberListResponse:
         """
         功能描述：
             按条件查询members列表。
 
         参数：
             teaching_class_id (str): 教学班级ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             TeachingClassMemberListResponse: 返回列表或分页查询结果。
         """
-        teaching_class = await self.repo.get(teaching_class_id, management_system_id)
+        teaching_class = await self.repo.get(teaching_class_id)
         if not teaching_class:
             raise ValueError("教学班级不存在")
         items = await self.repo.list_members(teaching_class_id)
@@ -167,7 +152,6 @@ class TeachingClassService:
     async def create_join_token(
         self,
         teaching_class_id: str,
-        management_system_id: str,
         teacher_id: str,
         body: TeachingClassJoinTokenCreate,
     ) -> TeachingClassJoinTokenResponse:
@@ -177,16 +161,17 @@ class TeachingClassService:
 
         参数：
             teaching_class_id (str): 教学班级ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             teacher_id (str): 教师ID。
             body (TeachingClassJoinTokenCreate): 接口请求体对象。
 
         返回值：
             TeachingClassJoinTokenResponse: 返回创建后的结果对象。
         """
-        teaching_class = await self.repo.get(teaching_class_id, management_system_id)
+        teaching_class = await self.repo.get(teaching_class_id)
         if not teaching_class:
             raise ValueError("教学班级不存在")
+        if teaching_class.teacher_id != teacher_id:
+            raise ValueError("仅可为本人教学班级创建加入令牌")
         item = TeachingClassJoinToken(
             teaching_class_id=teaching_class_id,
             created_by_teacher_id=teacher_id,
@@ -284,17 +269,6 @@ class TeachingClassService:
         )
         await self.repo.add(member)
 
-        link = await self.management_system_repo.get_link(current_user.id, teaching_class.management_system_id)
-        if not link:
-            # 学生可能先扫码加入班级再进入管理系统，因此这里补齐用户与管理系统的访问关系。
-            await self.management_system_repo.add_link(
-                UserManagementSystem(
-                    user_id=current_user.id,
-                    management_system_id=teaching_class.management_system_id,
-                    access_role=ManagementSystemAccessRole.VIEWER,
-                )
-            )
-
         token_item.used_count += 1
         token_item.last_used_at = datetime.now()
         await self.repo.save()
@@ -386,7 +360,6 @@ class TeachingClassService:
         """
         return TeachingClassResponse(
             id=item.id,
-            management_system_id=item.management_system_id,
             teacher_id=item.teacher_id,
             name=item.name,
             description=item.description,

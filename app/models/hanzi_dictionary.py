@@ -24,12 +24,6 @@ class HanziDataset(Base):
     __tablename__ = "hanzi_dataset"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
-    management_system_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
-        nullable=False,
-        index=True,
-    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     level: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
     batch_no: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)

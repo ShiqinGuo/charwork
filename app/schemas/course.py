@@ -34,7 +34,6 @@ class CourseUpdate(BaseModel):
 
 class CourseResponse(CourseBase):
     id: str
-    management_system_id: str
     teaching_class_id: str
     teacher_id: str
     is_default: bool

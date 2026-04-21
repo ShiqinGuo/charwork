@@ -44,7 +44,6 @@ class HanziDatasetCreateHanziRequest(BaseModel):
 
 class HanziDatasetResponse(BaseModel):
     id: str
-    management_system_id: str
     name: str
     level: Optional[str] = None
     batch_no: Optional[str] = None

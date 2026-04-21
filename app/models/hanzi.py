@@ -2,7 +2,7 @@
 汉字数据模型模块。
 
 定义汉字实体及其结构、变体、等级等枚举。
-汉字与汉字字典、管理系统等实体建立关系映射。
+汉字与汉字字典、创建用户等实体建立关系映射。
 """
 
 from typing import Optional
@@ -44,15 +44,15 @@ class Hanzi(Base):
     汉字实体模型。
 
     对应数据库 hanzi 表，存储单个汉字的基本信息（字符、笔画数、结构、变体、等级等）。
-    支持多租户隔离（management_system_id）和字典关联（dictionary_id）。
+    共享字典条目通过 dictionary_id 关联，私有字库通过 created_by_user_id 归属到用户。
     """
     __tablename__ = "hanzi"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
     train_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
-    management_system_id: Mapped[Optional[str]] = mapped_column(
+    created_by_user_id: Mapped[Optional[str]] = mapped_column(
         String(50),
-        ForeignKey("management_system.id"),
+        ForeignKey("user.id"),
         nullable=True,
         index=True,
     )

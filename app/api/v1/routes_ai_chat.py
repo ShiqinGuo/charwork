@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_teacher
 from app.core.database import get_db
-from app.core.management_scope import ManagementScope, get_management_scope
 from app.models.teacher import Teacher
 from app.schemas.ai_chat import (
     AIChatConversation,
@@ -23,14 +22,13 @@ router = APIRouter()
 @router.post("/stream")
 async def stream_ai_chat(
     body: AIChatRequest,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
     service = AIChatService(db)
     try:
         return StreamingResponse(
-            service.stream_chat(body, scope.management_system_id, current_teacher.user_id),
+            service.stream_chat(body, current_teacher.user_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -48,7 +46,6 @@ async def list_ai_chat_conversations(
     limit: int | None = Query(None, ge=1, le=100),
     page: int | None = Query(None, ge=1),
     size: int | None = Query(None, ge=1, le=100),
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -56,7 +53,6 @@ async def list_ai_chat_conversations(
     pagination = resolve_pagination(page=page, size=size, skip=skip, limit=limit, default_limit=30)
     return await service.list_conversations(
         current_teacher.user_id,
-        scope.management_system_id,
         limit=pagination["limit"],
         offset=pagination["skip"],
         page=pagination["page"],
@@ -71,7 +67,6 @@ async def list_ai_chat_messages(
     limit: int | None = Query(None, ge=1, le=500),
     page: int | None = Query(None, ge=1),
     size: int | None = Query(None, ge=1, le=500),
-    _scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -81,7 +76,6 @@ async def list_ai_chat_messages(
         return await service.list_messages(
             conversation_id=conversation_id,
             teacher_user_id=current_teacher.user_id,
-            management_system_id=_scope.management_system_id,
             limit=pagination["limit"],
             offset=pagination["skip"],
             page=pagination["page"],
@@ -95,7 +89,6 @@ async def list_ai_chat_messages(
 async def rename_ai_chat_conversation(
     conversation_id: str,
     body: AIChatConversationRenameRequest,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -104,7 +97,6 @@ async def rename_ai_chat_conversation(
         return await service.rename_conversation(
             conversation_id=conversation_id,
             teacher_user_id=current_teacher.user_id,
-            management_system_id=scope.management_system_id,
             body=body,
         )
     except ValueError as exc:
@@ -114,7 +106,6 @@ async def rename_ai_chat_conversation(
 @router.delete("/conversations/{conversation_id}")
 async def delete_ai_chat_conversation(
     conversation_id: str,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -123,7 +114,6 @@ async def delete_ai_chat_conversation(
         await service.delete_conversation(
             conversation_id=conversation_id,
             teacher_user_id=current_teacher.user_id,
-            management_system_id=scope.management_system_id,
         )
         return {"status": "success"}
     except ValueError as exc:

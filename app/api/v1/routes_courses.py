@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_teacher, get_current_user
 from app.core.database import get_db
-from app.core.management_scope import ManagementScope, get_management_scope
 from app.models.teacher import Teacher
 from app.models.user import User, UserRole
 from app.repositories.student_repo import StudentRepository
@@ -26,7 +25,6 @@ async def list_courses(
     teaching_class_id: Optional[str] = Query(None),
     teacher_id: Optional[str] = Query(None),
     status_filter: Optional[str] = Query(None, alias="status"),
-    scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -42,7 +40,6 @@ async def list_courses(
         teaching_class_id (Optional[str]): 教学班级ID。
         teacher_id (Optional[str]): 教师ID。
         status_filter (Optional[str]): 状态信息。
-        scope (ManagementScope): 管理系统作用域对象。
         current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
@@ -59,11 +56,9 @@ async def list_courses(
     return await CourseService(db).list_courses(
         skip=pagination["skip"],
         limit=pagination["limit"],
-        management_system_id=scope.management_system_id,
         teaching_class_id=teaching_class_id,
         teacher_id=teacher_id,
         current_student_id=current_student_id,
-        current_user_role=current_user.role,
         status=status_filter,
         page=pagination["page"],
         size=pagination["size"],
@@ -73,7 +68,6 @@ async def list_courses(
 @router.post("/", response_model=CourseResponse, status_code=status.HTTP_201_CREATED)
 async def create_course(
     body: CourseCreate,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -83,7 +77,6 @@ async def create_course(
 
     参数：
         body (CourseCreate): 接口请求体对象。
-        scope (ManagementScope): 管理系统作用域对象。
         current_teacher (Teacher): 当前登录教师对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
@@ -91,7 +84,7 @@ async def create_course(
         None: 无返回值。
     """
     try:
-        return await CourseService(db).create_course(body, current_teacher.id, scope.management_system_id)
+        return await CourseService(db).create_course(body, current_teacher.id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -100,7 +93,6 @@ async def create_course(
 async def update_course(
     id: str,
     body: CourseUpdate,
-    scope: ManagementScope = Depends(get_management_scope),
     current_teacher: Teacher = Depends(get_current_teacher),
     db: AsyncSession = Depends(get_db),
 ):
@@ -111,18 +103,17 @@ async def update_course(
     参数：
         id (str): 目标记录ID。
         body (CourseUpdate): 接口请求体对象。
-        scope (ManagementScope): 管理系统作用域对象。
         current_teacher (Teacher): 当前登录教师对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
         None: 无返回值。
     """
-    item = await CourseService(db).get_course(id, scope.management_system_id)
+    item = await CourseService(db).get_course(id)
     if item and item.teacher_id != current_teacher.id:
         raise HTTPException(status_code=403, detail="仅可维护本人课程")
     try:
-        updated = await CourseService(db).update_course(id, body, scope.management_system_id)
+        updated = await CourseService(db).update_course(id, body)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not updated:
@@ -133,7 +124,6 @@ async def update_course(
 @router.get("/{id}", response_model=CourseResponse)
 async def get_course(
     id: str,
-    scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -143,14 +133,20 @@ async def get_course(
 
     参数：
         id (str): 目标记录ID。
-        scope (ManagementScope): 管理系统作用域对象。
         current_user (User): 当前登录用户对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
         None: 无返回值。
     """
-    item = await CourseService(db).get_course(id, scope.management_system_id, current_user.role)
+    item = await CourseService(db).get_course(id)
     if not item:
         raise HTTPException(status_code=404, detail="课程不存在")
+    if current_user.role == UserRole.STUDENT:
+        student = await StudentRepository(db).get_by_user_id(current_user.id)
+        if not student:
+            raise HTTPException(status_code=404, detail="学生档案不存在")
+        accessible_course_ids = await CourseService(db).repo.list_ids_for_student(student.id)
+        if item.id not in accessible_course_ids:
+            raise HTTPException(status_code=403, detail="仅可查看所属课程")
     return item

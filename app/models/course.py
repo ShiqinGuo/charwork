@@ -18,12 +18,6 @@ class Course(Base):
     __tablename__ = "course"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
-    management_system_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
-        nullable=False,
-        index=True,
-    )
     teaching_class_id: Mapped[str] = mapped_column(
         String(50),
         ForeignKey("teaching_class.id"),
@@ -54,4 +48,4 @@ class Course(Base):
         返回值：
             None: 无返回值。
         """
-        return f"<Course(name='{self.name}', management_system_id='{self.management_system_id}')>"
+        return f"<Course(name='{self.name}', teacher_id='{self.teacher_id}')>"

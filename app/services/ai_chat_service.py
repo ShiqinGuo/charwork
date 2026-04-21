@@ -86,12 +86,10 @@ class AIChatService:
             api_key=self._get_api_key(),
         )
 
-    async def stream_chat(self, body: AIChatRequest, management_system_id: str,
-                          teacher_user_id: str) -> AsyncIterator[str]:
+    async def stream_chat(self, body: AIChatRequest, teacher_user_id: str) -> AsyncIterator[str]:
         conversation = await self._ensure_conversation(
             conversation_id=body.conversation_id or generate_id(),
             first_message=body.message,
-            management_system_id=management_system_id,
             teacher_user_id=teacher_user_id,
         )
         await self.repo.create_message(
@@ -104,7 +102,7 @@ class AIChatService:
 
         short_messages, long_memory = await asyncio.gather(
             self._load_short_memory_window(conversation.id),
-            self._load_long_memory_facts(teacher_user_id, management_system_id),
+            self._load_long_memory_facts(teacher_user_id),
         )
         messages = self._build_messages(body.message, short_messages, long_memory)
         yield self._to_sse(AIChatStreamEvent(event="status", data={"phase": "analysis", "message": "正在分析问题"}))
@@ -192,7 +190,7 @@ class AIChatService:
             ))
 
             tool_result = await self._execute_tool(
-                fn_name, fn_args, management_system_id, teacher_user_id,
+                fn_name, fn_args, teacher_user_id,
             )
             tool_calls_record.append(AIChatToolCall(
                 name=fn_name, args=fn_args, result=tool_result,
@@ -230,7 +228,6 @@ class AIChatService:
             conversation_id=conversation.id,
             message_id=assistant_message.id,
             teacher_user_id=teacher_user_id,
-            management_system_id=management_system_id,
             student_id=body.student_id or self._extract_student_id(body.message),
             tool_calls=tool_calls_record,
         )
@@ -253,14 +250,12 @@ class AIChatService:
         self,
         name: str,
         args: dict[str, Any],
-        management_system_id: str,
         teacher_user_id: str,
     ) -> dict[str, Any]:
         """根据工具名称分派执行，返回结果字典。"""
         if name == "search_resources":
             return await self.tools_service.search_resources(
                 keyword=args.get("keyword", ""),
-                management_system_id=management_system_id,
                 teacher_user_id=teacher_user_id,
                 modules=args.get("modules"),
                 limit=args.get("limit", 10),
@@ -302,7 +297,6 @@ class AIChatService:
     async def list_conversations(
         self,
         teacher_user_id: str,
-        management_system_id: str,
         limit: int = 30,
         offset: int = 0,
         page: int | None = None,
@@ -310,11 +304,10 @@ class AIChatService:
     ) -> AIChatConversationListResponse:
         items = await self.repo.list_conversations(
             teacher_user_id=teacher_user_id,
-            management_system_id=management_system_id,
             limit=limit,
             offset=offset,
         )
-        total = await self.repo.count_conversations(teacher_user_id, management_system_id)
+        total = await self.repo.count_conversations(teacher_user_id)
         payload = build_paged_response(
             items=[self._to_conversation_response(item) for item in items],
             total=total,
@@ -326,13 +319,12 @@ class AIChatService:
         self,
         conversation_id: str,
         teacher_user_id: str,
-        management_system_id: str,
         limit: int = 100,
         offset: int = 0,
         page: int | None = None,
         size: int | None = None,
     ) -> AIChatMessageListResponse:
-        conversation = await self._load_accessible_conversation(conversation_id, teacher_user_id, management_system_id)
+        conversation = await self._load_accessible_conversation(conversation_id, teacher_user_id)
         items = await self.repo.list_messages(conversation.id, limit=limit, offset=offset)
         total = await self.repo.count_messages(conversation.id)
         payload = build_paged_response(
@@ -346,10 +338,9 @@ class AIChatService:
         self,
         conversation_id: str,
         teacher_user_id: str,
-        management_system_id: str,
         body: AIChatConversationRenameRequest,
     ) -> AIChatConversation:
-        conversation = await self._load_accessible_conversation(conversation_id, teacher_user_id, management_system_id)
+        conversation = await self._load_accessible_conversation(conversation_id, teacher_user_id)
         item = await self.repo.rename_conversation(conversation, body.title.strip())
         await self.repo.commit()
         return self._to_conversation_response(item)
@@ -358,9 +349,8 @@ class AIChatService:
         self,
         conversation_id: str,
         teacher_user_id: str,
-        management_system_id: str,
     ) -> None:
-        conversation = await self._load_accessible_conversation(conversation_id, teacher_user_id, management_system_id)
+        conversation = await self._load_accessible_conversation(conversation_id, teacher_user_id)
         await self.repo.soft_delete_conversation(conversation)
         await self.repo.commit()
         redis = get_redis()
@@ -388,12 +378,11 @@ class AIChatService:
         self,
         conversation_id: str,
         first_message: str,
-        management_system_id: str,
         teacher_user_id: str,
     ) -> AIChatConversationModel:
         item = await self.repo.get_conversation(conversation_id)
         if item:
-            if item.teacher_user_id != teacher_user_id or item.management_system_id != management_system_id:
+            if item.teacher_user_id != teacher_user_id:
                 raise ValueError("无权访问该对话")
             if item.is_deleted:
                 raise ValueError("对话已删除")
@@ -402,7 +391,6 @@ class AIChatService:
         return await self.repo.create_conversation(
             conversation_id=conversation_id,
             teacher_user_id=teacher_user_id,
-            management_system_id=management_system_id,
             title=title,
         )
 
@@ -410,12 +398,11 @@ class AIChatService:
         self,
         conversation_id: str,
         teacher_user_id: str,
-        management_system_id: str,
     ) -> AIChatConversationModel:
         item = await self.repo.get_conversation(conversation_id)
         if not item or item.is_deleted:
             raise ValueError("对话不存在")
-        if item.teacher_user_id != teacher_user_id or item.management_system_id != management_system_id:
+        if item.teacher_user_id != teacher_user_id:
             raise ValueError("无权访问该对话")
         return item
 
@@ -461,7 +448,6 @@ class AIChatService:
         conversation_id: str,
         message_id: str,
         teacher_user_id: str,
-        management_system_id: str,
         student_id: str | None,
         tool_calls: list[AIChatToolCall],
     ) -> None:
@@ -472,15 +458,13 @@ class AIChatService:
             conversation_id=conversation_id,
             message_id=message_id,
             teacher_user_id=teacher_user_id,
-            management_system_id=management_system_id,
             student_id=student_id,
             facts=facts,
         )
 
-    async def _load_long_memory_facts(self, teacher_user_id: str, management_system_id: str) -> list[dict[str, Any]]:
+    async def _load_long_memory_facts(self, teacher_user_id: str) -> list[dict[str, Any]]:
         items = await self.repo.list_latest_memory_facts(
             teacher_user_id=teacher_user_id,
-            management_system_id=management_system_id,
             limit=settings.AI_LONG_MEMORY_FACT_LIMIT,
         )
         return [
@@ -528,7 +512,6 @@ class AIChatService:
         return AIChatConversation(
             conversation_id=item.id,
             title=item.title,
-            management_system_id=item.management_system_id,
             created_at=item.created_at.isoformat() if item.created_at else "",
             updated_at=item.updated_at.isoformat() if item.updated_at else "",
         )

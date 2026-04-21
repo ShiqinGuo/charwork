@@ -11,10 +11,19 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.ai_feedback import (
+    AIFeedbackGeneratedBy,
+    AIFeedbackScope,
+    AIFeedbackStatus,
+    AIFeedbackTargetType,
+    AIFeedbackVisibility,
+)
 from app.models.assignment import Assignment
 from app.models.message import Message
 from app.models.student import Student
 from app.models.submission import SubmissionStatus
+from app.repositories.ai_feedback_repo import AIFeedbackRepository
+from app.repositories.attachment_repo import AttachmentRepository
 from app.repositories.event_outbox_repo import EventOutboxRepository
 from app.repositories.submission_repo import SubmissionRepository
 from app.schemas.submission import (
@@ -26,7 +35,7 @@ from app.schemas.submission import (
 )
 from app.services.submission_state_machine import SubmissionStateMachine
 from app.tasks.notification_tasks import send_grade_notification, send_submission_notification, publish_outbox_events
-from app.tasks.ai_feedback_tasks import generate_ai_feedback
+from app.tasks.ai_feedback_tasks import generate_ai_feedback, generate_submission_ai_summary
 from app.utils.pagination import build_paged_response
 
 
@@ -49,7 +58,6 @@ class SubmissionService:
     async def upload_submission_images(
         self,
         files: list[UploadFile],
-        management_system_id: str,
     ) -> list[str]:
         """
         功能描述：
@@ -57,8 +65,6 @@ class SubmissionService:
 
         参数：
             files (list[UploadFile]): 学生提交的图片文件列表。
-            management_system_id (str): 管理系统ID，用于隔离临时文件目录。
-
         返回值：
             list[str]: 返回上传成功后的附件ID列表。
         """
@@ -77,33 +83,29 @@ class SubmissionService:
                     file=upload_file,
                     owner_type="submission",
                     owner_id="temp",
-                    management_system_id=management_system_id,
                 )
                 attachment_ids.append(attachment.id)
             except Exception as e:
                 raise ValueError(f"上传图片失败: {str(e)}")
         return attachment_ids
 
-    async def get_submission(self, id: str, management_system_id: str) -> Optional[SubmissionResponse]:
+    async def get_submission(self, id: str) -> Optional[SubmissionResponse]:
         """
         功能描述：
             按条件获取提交记录。
 
         参数：
             id (str): 目标记录ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[SubmissionResponse]: 返回查询到的结果对象；未命中时返回 None。
         """
-        submission = await self.repo.get(id, management_system_id)
+        submission = await self.repo.get(id)
         return SubmissionResponse.model_validate(submission) if submission else None
 
     async def get_latest_submission_for_student(
         self,
         assignment_id: str,
         student_id: str,
-        management_system_id: str,
     ) -> Optional[SubmissionResponse]:
         """
         功能描述：
@@ -112,22 +114,18 @@ class SubmissionService:
         参数：
             assignment_id (str): 作业ID。
             student_id (str): 学生ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[SubmissionResponse]: 返回最新提交记录；未命中时返回 None。
         """
         submission = await self.repo.get_latest_by_assignment_student(
             assignment_id=assignment_id,
             student_id=student_id,
-            management_system_id=management_system_id,
         )
         return SubmissionResponse.model_validate(submission) if submission else None
 
     async def list_submissions_by_assignment(
         self,
         assignment_id: str,
-        management_system_id: str,
         student_id: Optional[str] = None,
         skip: int = 0,
         limit: int = 20,
@@ -140,7 +138,6 @@ class SubmissionService:
 
         参数：
             assignment_id (str): 作业ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             student_id (Optional[str]): 学生ID。
             skip (int): 分页偏移量。
             limit (int): 单次查询的最大返回数量。
@@ -150,8 +147,8 @@ class SubmissionService:
         返回值：
             SubmissionListResponse: 返回列表或分页查询结果。
         """
-        items = await self.repo.get_all_by_assignment(assignment_id, skip, limit, management_system_id, student_id)
-        total = await self.repo.count_by_assignment(assignment_id, management_system_id, student_id)
+        items = await self.repo.get_all_by_assignment(assignment_id, skip, limit, student_id)
+        total = await self.repo.count_by_assignment(assignment_id, student_id)
         payload = build_paged_response(
             items=[SubmissionResponse.model_validate(i) for i in items],
             total=total,
@@ -163,7 +160,6 @@ class SubmissionService:
         self,
         assignment_id: str,
         submission_in: SubmissionCreate,
-        management_system_id: str,
     ) -> SubmissionResponse:
         """
         功能描述：
@@ -172,24 +168,21 @@ class SubmissionService:
         参数：
             assignment_id (str): 作业ID。
             submission_in (SubmissionCreate): 提交记录输入对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             SubmissionResponse: 返回创建后的结果对象。
         """
-        submission = self.repo.build_submission(assignment_id, submission_in, management_system_id)
+        submission = self.repo.build_submission(assignment_id, submission_in)
         self.repo.db.add(submission)
         await self.repo.db.flush()
 
         # 关联附件
-        if submission_in.attachment_ids:
-            from app.repositories.attachment_repo import AttachmentRepository
+        new_attachment_ids = list(submission_in.attachment_ids or [])
+        if new_attachment_ids:
             attachment_repo = AttachmentRepository(self.repo.db)
-            for attachment_id in submission_in.attachment_ids:
-                attachment = await attachment_repo.get(attachment_id, management_system_id)
+            for attachment_id in new_attachment_ids:
+                attachment = await attachment_repo.get(attachment_id)
                 if not attachment:
                     raise ValueError(f"Attachment not found: {attachment_id}")
-                # 更新附件的owner_id
                 attachment.owner_id = submission.id
                 self.repo.db.add(attachment)
 
@@ -209,14 +202,17 @@ class SubmissionService:
         )
         await self.repo.commit()
         await self.repo.refresh(submission)
-        self._schedule_submission_followups(submission.id, publish_outbox=True)
+        self._schedule_submission_followups(
+            submission.id,
+            new_attachment_ids=new_attachment_ids,
+            publish_outbox=True,
+        )
         return SubmissionResponse.model_validate(submission)
 
     async def update_submission(
         self,
         id: str,
         submission_in: SubmissionCreate,
-        management_system_id: str,
     ) -> Optional[SubmissionResponse]:
         """
         功能描述：
@@ -225,12 +221,10 @@ class SubmissionService:
         参数：
             id (str): 目标记录ID。
             submission_in (SubmissionCreate): 提交记录输入对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[SubmissionResponse]: 返回更新后的结果对象；未命中时返回 None。
         """
-        submission = await self.repo.get(id, management_system_id)
+        submission = await self.repo.get(id)
         if not submission:
             return None
         transition_result = self.state_machine.transition(
@@ -243,15 +237,14 @@ class SubmissionService:
         )
 
         # 处理附件
+        added_attachment_ids: list[str] = []
         if submission_in.attachment_ids:
-            from app.repositories.attachment_repo import AttachmentRepository
             attachment_repo = AttachmentRepository(self.repo.db)
 
             # 获取当前附件
             current_attachments = await attachment_repo.get_by_owner(
                 owner_type="submission",
                 owner_id=id,
-                management_system_id=management_system_id,
             )
             current_ids = {a.id for a in current_attachments}
             new_ids = set(submission_in.attachment_ids)
@@ -264,21 +257,24 @@ class SubmissionService:
             # 添加新附件
             for attachment_id in new_ids:
                 if attachment_id not in current_ids:
-                    attachment = await attachment_repo.get(attachment_id, management_system_id)
+                    attachment = await attachment_repo.get(attachment_id)
                     if not attachment:
                         raise ValueError(f"Attachment not found: {attachment_id}")
                     attachment.owner_id = id
                     self.repo.db.add(attachment)
+                    added_attachment_ids.append(attachment_id)
 
         updated_submission = await self.repo.update(submission, update_data)
-        self._schedule_submission_followups(updated_submission.id)
+        self._schedule_submission_followups(
+            updated_submission.id,
+            new_attachment_ids=added_attachment_ids,
+        )
         return SubmissionResponse.model_validate(updated_submission)
 
     async def grade_submission(
         self,
         id: str,
         body: SubmissionGrade,
-        management_system_id: str,
         sender_user_id: str,
     ) -> Optional[SubmissionResponse]:
         """
@@ -288,13 +284,12 @@ class SubmissionService:
         参数：
             id (str): 目标记录ID。
             body (SubmissionGrade): 接口请求体对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             sender_user_id (str): 发送者用户ID。
 
         返回值：
             Optional[SubmissionResponse]: 返回处理结果对象；无可用结果时返回 None。
         """
-        submission = await self.repo.get(id, management_system_id)
+        submission = await self.repo.get(id)
         if not submission:
             return None
         transition_result = self.state_machine.transition(
@@ -313,7 +308,6 @@ class SubmissionService:
             submission.student_id,
             sender_user_id,
             body,
-            management_system_id,
         )
         send_grade_notification.delay(submission.id)
         return SubmissionResponse.model_validate(submission)
@@ -324,7 +318,6 @@ class SubmissionService:
         student_id: str,
         sender_user_id: str,
         body: SubmissionGrade,
-        management_system_id: str,
     ) -> None:
         """
         功能描述：
@@ -335,8 +328,6 @@ class SubmissionService:
             student_id (str): 学生ID。
             sender_user_id (str): 发送者用户ID。
             body (SubmissionGrade): 接口请求体对象。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             None: 无返回值。
         """
@@ -345,10 +336,7 @@ class SubmissionService:
         if not student:
             return
         assignment_result = await self.repo.db.execute(
-            select(Assignment).where(
-                Assignment.id == assignment_id,
-                Assignment.management_system_id == management_system_id,
-            )
+            select(Assignment).where(Assignment.id == assignment_id)
         )
         assignment = assignment_result.scalars().first()
         assignment_title = assignment.title if assignment else "当前作业"
@@ -357,36 +345,125 @@ class SubmissionService:
             Message(
                 sender_id=sender_user_id,
                 receiver_id=student.user_id,
-                management_system_id=management_system_id,
                 title="作业批改结果",
                 content=f"《{assignment_title}》已完成批改，得分 {body.score} 分。评语：{feedback_text}",
             )
         )
         await self.repo.commit()
 
-    async def get_ai_feedback(self, id: str, management_system_id: str) -> Optional[dict]:
-        """
-        功能描述：
-            获取 AI 生成的评语数据。
-
-        参数：
-            id (str): 目标记录ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
-        返回值：
-            Optional[dict]: 返回 ai_feedback 字典；提交不存在时返回 None。
-        """
-        submission = await self.repo.get(id, management_system_id)
+    async def list_attachment_ai_feedbacks(self, id: str) -> Optional[list[dict]]:
+        submission = await self.repo.get(id)
         if not submission:
             return None
-        return submission.ai_feedback
+
+        attachment_repo = AttachmentRepository(self.repo.db)
+        feedback_repo = AIFeedbackRepository(self.repo.db)
+        attachments = await attachment_repo.get_by_owner(
+            owner_type="submission",
+            owner_id=id,
+        )
+        feedbacks = await feedback_repo.list_by_targets(
+            target_type=AIFeedbackTargetType.SUBMISSION_ATTACHMENT.value,
+            target_ids=[attachment.id for attachment in attachments],
+            feedback_scope=AIFeedbackScope.ATTACHMENT_ITEM.value,
+            visibility_scopes=[AIFeedbackVisibility.SHARED_TEACHER_STUDENT.value],
+        )
+        feedback_map = {feedback.target_id: feedback for feedback in feedbacks}
+
+        items: list[dict] = []
+        for attachment in attachments:
+            feedback = feedback_map.get(attachment.id)
+            if feedback is None:
+                items.append(
+                    {
+                        "id": None,
+                        "attachment_id": attachment.id,
+                        "status": AIFeedbackStatus.PENDING.value,
+                        "visibility_scope": AIFeedbackVisibility.SHARED_TEACHER_STUDENT.value,
+                        "payload": None,
+                        "created_at": attachment.created_at,
+                        "updated_at": attachment.created_at,
+                    }
+                )
+                continue
+            items.append(
+                {
+                    "id": feedback.id,
+                    "attachment_id": attachment.id,
+                    "status": feedback.status,
+                    "visibility_scope": feedback.visibility_scope,
+                    "payload": feedback.result_payload,
+                    "created_at": feedback.created_at,
+                    "updated_at": feedback.updated_at,
+                }
+            )
+        return items
+
+    async def queue_student_ai_summary(
+        self,
+        id: str,
+        student_user_id: str,
+    ) -> Optional[dict]:
+        submission = await self.repo.get(id)
+        if not submission:
+            return None
+
+        attachments = await AttachmentRepository(self.repo.db).get_by_owner(
+            owner_type="submission",
+            owner_id=id,
+        )
+        payload = {
+            "submission_id": id,
+            "attachment_count": len(attachments),
+            "summary": "",
+            "strengths": [],
+            "improvements": [],
+            "overall_level": None,
+        }
+        feedback = await AIFeedbackRepository(self.repo.db).upsert_feedback(
+            target_type=AIFeedbackTargetType.SUBMISSION.value,
+            target_id=id,
+            feedback_scope=AIFeedbackScope.STUDENT_SUMMARY.value,
+            visibility_scope=AIFeedbackVisibility.STUDENT_ONLY.value,
+            status=AIFeedbackStatus.PENDING.value,
+            generated_by=AIFeedbackGeneratedBy.STUDENT.value,
+            result_payload=payload,
+        )
+        generate_submission_ai_summary.delay(id, student_user_id)
+        return {"status": feedback.status, "submission_id": id}
+
+    async def get_student_ai_summary(self, id: str) -> Optional[dict]:
+        submission = await self.repo.get(id)
+        if not submission:
+            return None
+        feedback = await AIFeedbackRepository(self.repo.db).get_by_slot(
+            target_type=AIFeedbackTargetType.SUBMISSION.value,
+            target_id=id,
+            feedback_scope=AIFeedbackScope.STUDENT_SUMMARY.value,
+        )
+        if feedback is None:
+            return {
+                "id": None,
+                "status": AIFeedbackStatus.PENDING.value,
+                "visibility_scope": AIFeedbackVisibility.STUDENT_ONLY.value,
+                "payload": None,
+                "created_at": submission.submitted_at,
+                "updated_at": submission.submitted_at,
+            }
+        return {
+            "id": feedback.id,
+            "status": feedback.status,
+            "visibility_scope": feedback.visibility_scope,
+            "payload": feedback.result_payload,
+            "created_at": feedback.created_at,
+            "updated_at": feedback.updated_at,
+        }
 
     async def save_teacher_feedback(
         self,
         id: str,
         teacher_feedback: Optional[str],
         score: int,
-        management_system_id: str,
     ) -> Optional[SubmissionResponse]:
         """
         功能描述：
@@ -396,12 +473,10 @@ class SubmissionService:
             id (str): 目标记录ID。
             teacher_feedback (Optional[str]): 教师评语文本。
             score (int): 教师打分。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
-
         返回值：
             Optional[SubmissionResponse]: 返回更新后的结果对象；不存在时返回 None。
         """
-        submission = await self.repo.get(id, management_system_id)
+        submission = await self.repo.get(id)
         if not submission:
             return None
         transition_result = self.state_machine.transition(
@@ -440,7 +515,6 @@ class SubmissionService:
             "status": next_status,
             "score": None,
             "teacher_feedback": None,
-            "ai_feedback": None,
             "graded_at": None,
             "submitted_at": datetime.now(),
         }
@@ -448,6 +522,7 @@ class SubmissionService:
     @staticmethod
     def _schedule_submission_followups(
         submission_id: str,
+        new_attachment_ids: list[str],
         publish_outbox: bool = False,
     ) -> None:
         """
@@ -456,20 +531,21 @@ class SubmissionService:
 
         参数：
             submission_id (str): 提交记录ID。
+            new_attachment_ids (list[str]): 本次新增并完成关联的附件ID列表。
             publish_outbox (bool): 是否触发 outbox 发布任务。
 
         返回值：
             None: 无返回值。
         """
         send_submission_notification.delay(submission_id)
-        generate_ai_feedback.delay(submission_id)
+        for attachment_id in new_attachment_ids:
+            generate_ai_feedback.delay(attachment_id)
         if publish_outbox:
             publish_outbox_events.delay()
 
     async def list_submissions_by_teacher(
         self,
         teacher_id: str,
-        management_system_id: str,
         status: Optional[str] = None,
         assignment_id: Optional[str] = None,
         skip: int = 0,
@@ -483,7 +559,6 @@ class SubmissionService:
 
         参数：
             teacher_id (str): 教师ID。
-            management_system_id (str): 管理系统ID，用于限制数据作用域。
             status (Optional[str]): 提交状态筛选。
             assignment_id (Optional[str]): 作业ID筛选。
             skip (int): 分页偏移量。
@@ -498,13 +573,11 @@ class SubmissionService:
             teacher_id=teacher_id,
             skip=skip,
             limit=limit,
-            management_system_id=management_system_id,
             status=status,
             assignment_id=assignment_id,
         )
         total = await self.repo.count_by_teacher(
             teacher_id=teacher_id,
-            management_system_id=management_system_id,
             status=status,
             assignment_id=assignment_id,
         )

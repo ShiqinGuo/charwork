@@ -57,14 +57,13 @@ def send_grade_notification(submission_id: str) -> dict:
 
 
 @celery_app.task(name="batch_send_reminder")
-def batch_send_reminder(plan_id: str, management_system_id: str, sender_user_id: str, expected_version: int) -> dict:
+def batch_send_reminder(plan_id: str, sender_user_id: str, expected_version: int) -> dict:
     """
     功能描述：
         批量处理send提醒。
 
     参数：
         plan_id (str): 计划ID。
-        management_system_id (str): 管理系统ID，用于限制数据作用域。
         sender_user_id (str): 发送者用户ID。
         expected_version (int): 整数结果。
 
@@ -72,16 +71,14 @@ def batch_send_reminder(plan_id: str, management_system_id: str, sender_user_id:
         dict: 返回字典形式的结果数据。
     """
     logger.info(
-        "收到作业提醒任务：plan_id=%s, management_system_id=%s, expected_version=%s",
+        "收到作业提醒任务：plan_id=%s, expected_version=%s",
         plan_id,
-        management_system_id,
         expected_version,
     )
     # 任务执行器是同步上下文，通过 asyncio.run 串接异步服务层逻辑。
     return asyncio.run(
         _batch_send_reminder(
             plan_id=plan_id,
-            management_system_id=management_system_id,
             sender_user_id=sender_user_id,
             expected_version=expected_version,
         )
@@ -90,7 +87,6 @@ def batch_send_reminder(plan_id: str, management_system_id: str, sender_user_id:
 
 async def _batch_send_reminder(
     plan_id: str,
-    management_system_id: str,
     sender_user_id: str,
     expected_version: int,
 ) -> dict:
@@ -101,7 +97,6 @@ async def _batch_send_reminder(
 
     参数：
         plan_id (str): 计划ID。
-        management_system_id (str): 管理系统ID，用于限制数据作用域。
         sender_user_id (str): 发送者用户ID。
         expected_version (int): 整数结果。
 
@@ -113,7 +108,6 @@ async def _batch_send_reminder(
     async with AsyncSessionLocal() as db:
         result = await AssignmentReminderService(db).execute_plan(
             plan_id=plan_id,
-            management_system_id=management_system_id,
             sender_user_id=sender_user_id,
             expected_version=expected_version,
         )

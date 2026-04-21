@@ -39,7 +39,6 @@ class HanziBase(BaseModel):
     comment: Optional[str] = None
     variant: Optional[VariantType] = VariantType.SIMPLIFIED
     standard_image: Optional[str] = None
-    management_system_id: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -81,7 +80,6 @@ class HanziUpdate(BaseModel):
     comment: Optional[str] = None
     variant: Optional[VariantType] = None
     standard_image: Optional[str] = None
-    management_system_id: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod

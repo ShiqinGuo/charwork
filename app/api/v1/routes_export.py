@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.core.management_scope import ManagementScope, get_management_scope
+from app.core.security import SessionUser
 from app.schemas.import_export import ExportRequest
 from app.services.export_service import ExportService
 
@@ -13,7 +14,7 @@ router = APIRouter()
 @router.post("/hanzi")
 async def export_hanzi(
     req: ExportRequest,
-    scope: ManagementScope = Depends(get_management_scope),
+    current_user: SessionUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -41,7 +42,7 @@ async def export_hanzi(
             level=req.level,
             variant=req.variant,
             search=req.search,
-            management_system_id=scope.management_system_id,
+            current_user_id=current_user.id,
         )
         return result
     except ValueError as e:
@@ -53,12 +54,12 @@ async def export_hanzi(
 @router.post("/hanzi-datasets/{dataset_id}")
 async def export_hanzi_dataset(
     dataset_id: str,
-    scope: ManagementScope = Depends(get_management_scope),
+    current_user: SessionUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     service = ExportService(db)
     try:
-        return await service.export_dataset_package(dataset_id, scope.management_system_id)
+        return await service.export_dataset_package(dataset_id, current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

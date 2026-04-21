@@ -2,7 +2,6 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_admin, get_current_user
-from app.core.management_scope import ManagementScope, get_management_scope
 
 from app.core.database import get_db
 from app.core.security import SessionUser
@@ -19,7 +18,6 @@ async def cross_search(
     modules: Optional[list[str]] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     current_user: SessionUser = Depends(get_current_user),
-    scope: ManagementScope = Depends(get_management_scope),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -31,7 +29,6 @@ async def cross_search(
         modules (Optional[list[str]]): 列表结果。
         limit (int): 单次查询的最大返回数量。
         current_user (SessionUser): 当前登录用户对象。
-        scope (ManagementScope): 管理系统作用域对象。
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
@@ -41,7 +38,6 @@ async def cross_search(
         return await CrossSearchService(db).search(
             keyword=keyword,
             current_user=current_user,
-            management_system_id=scope.management_system_id,
             modules=modules,
             limit=limit,
         )

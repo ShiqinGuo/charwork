@@ -18,7 +18,6 @@ class AIToolsService:
     async def search_resources(
         self,
         keyword: str,
-        management_system_id: str,
         teacher_user_id: str,
         modules: list[str] | None = None,
         limit: int = 10,
@@ -38,7 +37,6 @@ class AIToolsService:
         result = await service.search(
             keyword=keyword,
             current_user=teacher_session,
-            management_system_id=management_system_id,
             modules=modules,
             limit=limit,
         )
@@ -58,7 +56,6 @@ class AIToolsService:
     async def get_student_recent_assignments(
         self,
         student_id: str,
-        management_system_id: str,
         limit: int = 5,
     ) -> dict[str, Any]:
         student = await self._get_student(student_id)
@@ -70,7 +67,6 @@ class AIToolsService:
             .where(
                 and_(
                     Submission.student_id == student_id,
-                    Submission.management_system_id == management_system_id,
                 )
             )
             .order_by(Submission.submitted_at.desc())
@@ -99,7 +95,6 @@ class AIToolsService:
     async def get_student_handwriting_quality(
         self,
         student_id: str,
-        management_system_id: str,
         recent_days: int = 30,
     ) -> dict[str, Any]:
         student = await self._get_student(student_id)
@@ -116,7 +111,6 @@ class AIToolsService:
             .where(
                 and_(
                     Submission.student_id == student_id,
-                    Submission.management_system_id == management_system_id,
                     Submission.submitted_at >= time_start,
                     Submission.score.is_not(None),
                 )

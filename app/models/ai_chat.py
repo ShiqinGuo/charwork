@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -10,15 +10,12 @@ from app.utils.id_generator import generate_id
 
 class AIChatConversation(Base):
     __tablename__ = "ai_chat_conversation"
+    __table_args__ = (
+        Index("ix_ai_chat_conversation_teacher_updated_at", "teacher_user_id", "updated_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
     teacher_user_id: Mapped[str] = mapped_column(String(50), ForeignKey("user.id"), nullable=False, index=True)
-    management_system_id: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
-        nullable=True,
-        index=True,
-    )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -85,12 +82,6 @@ class AIChatMemoryFact(Base):
         index=True,
     )
     teacher_user_id: Mapped[str] = mapped_column(String(50), ForeignKey("user.id"), nullable=False, index=True)
-    management_system_id: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
-        nullable=True,
-        index=True,
-    )
     student_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("student.id"), nullable=True, index=True)
     fact_type: Mapped[str] = mapped_column(String(50), nullable=False)
     fact_key: Mapped[str] = mapped_column(String(120), nullable=False)

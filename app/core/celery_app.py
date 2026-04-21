@@ -22,3 +22,6 @@ celery_app.conf.update(
     timezone="Asia/Shanghai",
     enable_utc=True,
 )
+
+# 自动发现 app.tasks 包，并通过其聚合导入完成任务注册。
+celery_app.autodiscover_tasks(packages=["app.tasks"], related_name=None, force=True)

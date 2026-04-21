@@ -34,12 +34,6 @@ class AssignmentReminderPlan(Base):
         index=True,
     )
     course_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("course.id"), nullable=True, index=True)
-    management_system_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
-        nullable=False,
-        index=True,
-    )
     created_by_user_id: Mapped[str] = mapped_column(String(50), ForeignKey("user.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -92,12 +86,6 @@ class AssignmentReminderExecution(Base):
     assignment_id: Mapped[str] = mapped_column(
         String(50),
         ForeignKey("assignment.id"),
-        nullable=False,
-        index=True,
-    )
-    management_system_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
         nullable=False,
         index=True,
     )

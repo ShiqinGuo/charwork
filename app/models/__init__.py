@@ -37,3 +37,11 @@ from app.models.teaching_class import (  # noqa
     TeachingClassStatus,
 )
 from app.models.attachment import Attachment  # noqa
+from app.models.ai_feedback import (  # noqa
+    AIFeedback,
+    AIFeedbackGeneratedBy,
+    AIFeedbackScope,
+    AIFeedbackStatus,
+    AIFeedbackTargetType,
+    AIFeedbackVisibility,
+)

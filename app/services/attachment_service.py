@@ -49,7 +49,6 @@ class AttachmentService:
         file: UploadFile,
         owner_type: str,
         owner_id: str,
-        management_system_id: str,
     ) -> AttachmentResponse:
         """
         功能描述：
@@ -59,8 +58,6 @@ class AttachmentService:
             file (UploadFile): 上传的文件对象。
             owner_type (str): 所有者类型。
             owner_id (str): 所有者ID。
-            management_system_id (str): 管理系统ID。
-
         返回值：
             AttachmentResponse: 返回创建后的附件响应对象。
         """
@@ -94,7 +91,7 @@ class AttachmentService:
                 file_size=file_size,
                 mime_type=file.content_type or "application/octet-stream",
             )
-            attachment = await self.repo.create(attachment_in, management_system_id)
+            attachment = await self.repo.create(attachment_in)
 
             return AttachmentResponse.model_validate(attachment)
         finally:
@@ -106,7 +103,6 @@ class AttachmentService:
         self,
         owner_type: str,
         owner_id: str,
-        management_system_id: str,
     ) -> List[AttachmentResponse]:
         """
         功能描述：
@@ -115,22 +111,18 @@ class AttachmentService:
         参数：
             owner_type (str): 所有者类型。
             owner_id (str): 所有者ID。
-            management_system_id (str): 管理系统ID。
-
         返回值：
             List[AttachmentResponse]: 返回附件响应列表。
         """
         attachments = await self.repo.get_by_owner(
             owner_type=owner_type,
             owner_id=owner_id,
-            management_system_id=management_system_id,
         )
         return [AttachmentResponse.model_validate(a) for a in attachments]
 
     async def delete_attachment(
         self,
         attachment_id: str,
-        management_system_id: str,
     ) -> None:
         """
         功能描述：
@@ -138,12 +130,10 @@ class AttachmentService:
 
         参数：
             attachment_id (str): 附件ID。
-            management_system_id (str): 管理系统ID。
-
         返回值：
             None: 无返回值。
         """
-        attachment = await self.repo.get(attachment_id, management_system_id)
+        attachment = await self.repo.get(attachment_id)
         if not attachment:
             raise ValueError(f"附件不存在: {attachment_id}")
 

@@ -28,18 +28,12 @@ class Assignment(Base):
     作业实体模型。
 
     对应数据库 assignment 表，存储作业基本信息（标题、描述、汉字列表、指导步骤、附件）
-    和状态信息（状态、截止日期）。支持多租户隔离（management_system_id）。
+    和状态信息（状态、截止日期）。
     """
     __tablename__ = "assignment"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
     teacher_id: Mapped[str] = mapped_column(String(50), ForeignKey("teacher.id"), nullable=False)
-    management_system_id: Mapped[Optional[str]] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
-        nullable=True,
-        index=True,
-    )
     course_id: Mapped[Optional[str]] = mapped_column(
         String(50),
         ForeignKey("course.id"),

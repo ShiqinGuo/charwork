@@ -28,16 +28,10 @@ class TeachingClassJoinTokenStatus(str, PyEnum):
 class TeachingClass(Base):
     __tablename__ = "teaching_class"
     __table_args__ = (
-        UniqueConstraint("management_system_id", "teacher_id", "name", name="uq_teaching_class_scope_name"),
+        UniqueConstraint("teacher_id", "name", name="uq_teaching_class_teacher_name"),
     )
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
-    management_system_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("management_system.id"),
-        nullable=False,
-        index=True,
-    )
     teacher_id: Mapped[str] = mapped_column(String(50), ForeignKey("teacher.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -75,7 +69,7 @@ class TeachingClass(Base):
         返回值：
             None: 无返回值。
         """
-        return f"<TeachingClass(name='{self.name}', management_system_id='{self.management_system_id}')>"
+        return f"<TeachingClass(name='{self.name}', teacher_id='{self.teacher_id}')>"
 
 
 class TeachingClassMember(Base):

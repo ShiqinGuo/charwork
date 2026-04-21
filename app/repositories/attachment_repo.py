@@ -20,15 +20,13 @@ class AttachmentRepository:
         """
         self.db = db
 
-    async def create(self, attachment_in: AttachmentCreate, management_system_id: str) -> Attachment:
+    async def create(self, attachment_in: AttachmentCreate) -> Attachment:
         """
         功能描述：
             创建附件记录。
 
         参数：
             attachment_in (AttachmentCreate): 附件输入对象。
-            management_system_id (str): 管理系统ID，用于多租户隔离。
-
         返回值：
             Attachment: 返回创建后的附件对象。
         """
@@ -39,22 +37,19 @@ class AttachmentRepository:
             filename=attachment_in.filename,
             file_size=attachment_in.file_size,
             mime_type=attachment_in.mime_type,
-            management_system_id=management_system_id,
         )
         self.db.add(attachment)
         await self.db.commit()
         await self.db.refresh(attachment)
         return attachment
 
-    async def get(self, id: str, management_system_id: Optional[str] = None) -> Optional[Attachment]:
+    async def get(self, id: str) -> Optional[Attachment]:
         """
         功能描述：
             按ID获取附件（排除已删除）。
 
         参数：
             id (str): 附件ID。
-            management_system_id (Optional[str]): 管理系统ID，用于多租户隔离。
-
         返回值：
             Optional[Attachment]: 返回附件对象；未找到或已删除时返回 None。
         """
@@ -62,8 +57,6 @@ class AttachmentRepository:
             Attachment.id == id,
             Attachment.deleted_at.is_(None),
         )
-        if management_system_id:
-            query = query.where(Attachment.management_system_id == management_system_id)
         result = await self.db.execute(query)
         return result.scalars().first()
 
@@ -71,7 +64,6 @@ class AttachmentRepository:
         self,
         owner_type: str,
         owner_id: str,
-        management_system_id: Optional[str] = None,
     ) -> List[Attachment]:
         """
         功能描述：
@@ -80,8 +72,6 @@ class AttachmentRepository:
         参数：
             owner_type (str): 所有者类型。
             owner_id (str): 所有者ID。
-            management_system_id (Optional[str]): 管理系统ID，用于多租户隔离。
-
         返回值：
             List[Attachment]: 返回附件列表。
         """
@@ -90,8 +80,6 @@ class AttachmentRepository:
             Attachment.owner_id == owner_id,
             Attachment.deleted_at.is_(None),
         )
-        if management_system_id:
-            query = query.where(Attachment.management_system_id == management_system_id)
         result = await self.db.execute(query)
         return result.scalars().all()
 

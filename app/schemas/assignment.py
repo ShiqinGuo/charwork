@@ -36,7 +36,6 @@ class AssignmentBase(BaseModel):
     attachments: List[AssignmentAttachment] = Field(default_factory=list)
     due_date: Optional[datetime] = None
     status: Optional[AssignmentStatus] = AssignmentStatus.DRAFT
-    management_system_id: Optional[str] = None
     custom_field_values: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="before")
@@ -77,7 +76,6 @@ class AssignmentUpdate(BaseModel):
     attachments: Optional[List[AssignmentAttachment]] = None
     due_date: Optional[datetime] = None
     status: Optional[AssignmentStatus] = None
-    management_system_id: Optional[str] = None
     custom_field_values: Optional[dict[str, Any]] = None
 
     @model_validator(mode="before")

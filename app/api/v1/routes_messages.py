@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.core.management_scope import ManagementScope, get_management_scope
 from app.models.user import User
 from app.schemas.message import MessageCreate, MessageResponse
 from app.services.message_service import MessageService
@@ -17,7 +16,6 @@ router = APIRouter()
 @router.post("/", response_model=MessageResponse)
 async def send_message(
     body: MessageCreate,
-    scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -39,7 +37,6 @@ async def send_message(
         return await service.send_message(
             body,
             sender_id=current_user.id,
-            management_system_id=scope.management_system_id,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
@@ -50,7 +47,6 @@ async def list_messages(
     box: Literal["inbox", "outbox"] = Query("inbox"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -71,14 +67,13 @@ async def list_messages(
     """
     service = MessageService(db)
     if box == "outbox":
-        return await service.list_outbox(current_user.id, scope.management_system_id, skip, limit)
-    return await service.list_inbox(current_user.id, scope.management_system_id, skip, limit)
+        return await service.list_outbox(current_user.id, skip, limit)
+    return await service.list_inbox(current_user.id, skip, limit)
 
 
 @router.put("/{id}/read", response_model=MessageResponse)
 async def mark_read(
     id: str,
-    scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -95,7 +90,7 @@ async def mark_read(
     返回值：
         None: 无返回值。
     """
-    msg = await MessageService(db).mark_read(id, current_user.id, scope.management_system_id)
+    msg = await MessageService(db).mark_read(id, current_user.id)
     if not msg:
         raise HTTPException(status_code=404, detail="消息不存在或无权限")
     return msg
