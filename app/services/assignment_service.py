@@ -32,9 +32,9 @@ from app.schemas.assignment import (
     AssignmentTransitionEvent,
     AssignmentTransitionResponse,
 )
-from app.services.assignment_attachment_upload_service import AssignmentAttachmentUploadService
 from app.services.assignment_state_machine import AssignmentStateMachine
 from app.services.custom_field_service import CustomFieldService
+from app.services.attachment_service import AttachmentService
 from app.utils.pagination import build_paged_response
 
 
@@ -902,7 +902,7 @@ class AssignmentService:
     ) -> None:
         """
         功能描述：
-            确保附件uploadsexist存在，必要时自动补齐。
+            确保附件存在，必要时自动补齐。
 
         参数：
             management_system_id (str): 管理系统ID，用于限制数据作用域。
@@ -912,11 +912,13 @@ class AssignmentService:
         返回值：
             None: 无返回值。
         """
-        file_keys = self._collect_attachment_file_keys(attachments, instruction_steps)
-        await AssignmentAttachmentUploadService(self.repo.db).validate_uploads(
-            management_system_id,
-            file_keys,
-        )
+        attachment_ids = self._collect_attachment_ids(attachments, instruction_steps)
+        if attachment_ids:
+            service = AttachmentService(self.repo.db)
+            for attachment_id in attachment_ids:
+                attachment = await service.repo.get(attachment_id, management_system_id)
+                if not attachment:
+                    raise ValueError(f"附件不存在: {attachment_id}")
 
     async def _sync_attachment_uploads(
         self,
@@ -927,7 +929,7 @@ class AssignmentService:
     ) -> None:
         """
         功能描述：
-            同步附件uploads。
+            同步附件所有者。
 
         参数：
             assignment_id (str): 作业ID。
@@ -938,21 +940,23 @@ class AssignmentService:
         返回值：
             None: 无返回值。
         """
-        file_keys = self._collect_attachment_file_keys(attachments, instruction_steps)
-        await AssignmentAttachmentUploadService(self.repo.db).sync_assignment_uploads(
-            assignment_id,
-            management_system_id,
-            file_keys,
-        )
+        attachment_ids = self._collect_attachment_ids(attachments, instruction_steps)
+        if attachment_ids:
+            service = AttachmentService(self.repo.db)
+            for attachment_id in attachment_ids:
+                attachment = await service.repo.get(attachment_id, management_system_id)
+                if attachment:
+                    attachment.owner_id = assignment_id
+                    await service.repo.save()
 
     @staticmethod
-    def _collect_attachment_file_keys(
+    def _collect_attachment_ids(
         attachments: Optional[list[AssignmentAttachment | dict]] = None,
         instruction_steps: Optional[list[AssignmentInstructionStep | dict]] = None,
     ) -> list[str]:
         """
         功能描述：
-            处理附件文件keys。
+            收集附件ID。
 
         参数：
             attachments (Optional[list[AssignmentAttachment | dict]]): 列表结果。
@@ -961,18 +965,18 @@ class AssignmentService:
         返回值：
             list[str]: 返回列表形式的结果数据。
         """
-        file_keys: list[str] = []
+        attachment_ids: list[str] = []
         for item in attachments or []:
-            file_key = item.file_key if hasattr(item, "file_key") else item.get("file_key")
-            if file_key:
-                file_keys.append(file_key)
+            attachment_id = item.id if hasattr(item, "id") else item.get("id")
+            if attachment_id:
+                attachment_ids.append(attachment_id)
         for step in instruction_steps or []:
             step_attachments = step.attachments if hasattr(step, "attachments") else step.get("attachments", [])
             for item in step_attachments or []:
-                file_key = item.file_key if hasattr(item, "file_key") else item.get("file_key")
-                if file_key:
-                    file_keys.append(file_key)
-        return file_keys
+                attachment_id = item.id if hasattr(item, "id") else item.get("id")
+                if attachment_id:
+                    attachment_ids.append(attachment_id)
+        return attachment_ids
 
     @staticmethod
     def _to_response(item, custom_field_values: Optional[dict] = None) -> AssignmentResponse:

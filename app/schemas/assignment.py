@@ -117,23 +117,6 @@ class AssignmentResponse(AssignmentBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-class AssignmentAttachmentUploadResponse(BaseModel):
-    id: str
-    management_system_id: str
-    assignment_id: Optional[str] = None
-    uploaded_by_user_id: str
-    name: str
-    url: str
-    file_key: str
-    media_type: Optional[str] = None
-    size: Optional[int] = None
-    is_temporary: bool
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class AssignmentListResponse(BaseModel):
     total: int
     items: List[AssignmentResponse]

@@ -9,7 +9,6 @@ from app.models.user import User, UserRole
 from app.repositories.student_repo import StudentRepository
 from app.schemas.assignment import (
     AssignmentActionResponse,
-    AssignmentAttachmentUploadResponse,
     AssignmentDelayRequest,
     AssignmentResponse,
     AssignmentListResponse,
@@ -19,7 +18,7 @@ from app.schemas.assignment import (
     AssignmentTransitionRequest,
     AssignmentTransitionResponse,
 )
-from app.services.assignment_attachment_upload_service import AssignmentAttachmentUploadService
+from app.services.attachment_service import AttachmentService
 from app.services.assignment_service import AssignmentService
 from app.utils.pagination import resolve_pagination
 
@@ -176,7 +175,7 @@ async def create_assignment(
         raise _bad_request_error(exc) from exc
 
 
-@router.post("/attachments/upload", response_model=AssignmentAttachmentUploadResponse)
+@router.post("/attachments/upload")
 async def upload_assignment_attachment(
     file: UploadFile = File(...),
     scope: ManagementScope = Depends(get_management_scope),
@@ -194,14 +193,17 @@ async def upload_assignment_attachment(
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
-        None: 无返回值。
+        dict: 返回包含attachment_id的字典。
     """
     try:
-        return await AssignmentAttachmentUploadService(db).upload_attachment(
-            upload_file=file,
+        service = AttachmentService(db)
+        attachment = await service.upload_attachment(
+            file=file,
+            owner_type="assignment",
+            owner_id="",
             management_system_id=scope.management_system_id,
-            uploaded_by_user_id=current_teacher.user_id,
         )
+        return {"attachment_id": attachment.id}
     except ValueError as exc:
         raise _bad_request_error(exc) from exc
 
