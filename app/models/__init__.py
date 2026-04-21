@@ -37,3 +37,4 @@ from app.models.teaching_class import (  # noqa
     TeachingClassMemberStatus,
     TeachingClassStatus,
 )
+from app.models.attachment import Attachment  # noqa
