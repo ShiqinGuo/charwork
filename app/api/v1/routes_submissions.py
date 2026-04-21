@@ -16,6 +16,7 @@ from app.schemas.submission import (
     SubmissionResponse, TeacherFeedbackUpdate, AIFeedbackResponse,
 )
 from app.services.submission_service import SubmissionService
+from app.services.attachment_service import AttachmentService
 from app.utils.pagination import resolve_pagination
 
 
@@ -116,7 +117,7 @@ async def create_submission(
         raise HTTPException(status_code=404, detail="作业不存在")
     body = SubmissionCreate(
         content=content.strip() if content and content.strip() else None,
-        image_paths=[],
+        attachment_ids=[],
         student_id=student_id,
     )
     if current_user.role == UserRole.STUDENT:
@@ -138,10 +139,10 @@ async def create_submission(
     if existing_submission:
         raise HTTPException(status_code=409, detail="当前作业已提交，请改用修改接口")
     try:
-        body.image_paths = await service.upload_submission_images(files or [], scope.management_system_id)
+        body.attachment_ids = await service.upload_submission_images(files or [], scope.management_system_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if not body.content and not body.image_paths:
+    if not body.content and not body.attachment_ids:
         raise HTTPException(status_code=400, detail="提交内容和图片不能同时为空")
     return await service.create_submission(assignment_id, body, scope.management_system_id)
 
@@ -150,7 +151,7 @@ async def create_submission(
 async def update_submission(
     id: str,
     content: Optional[str] = Form(None),
-    existing_image_paths: Optional[list[str]] = Form(None),
+    retained_attachment_ids: Optional[list[str]] = Form(None),
     files: Optional[list[UploadFile]] = File(None),
     scope: ManagementScope = Depends(get_management_scope),
     current_user: User = Depends(get_current_user),
@@ -163,7 +164,7 @@ async def update_submission(
     参数：
         id (str): 提交记录ID。
         content (Optional[str]): 本次提交说明。
-        existing_image_paths (Optional[list[str]]): 保留的原有图片地址列表。
+        retained_attachment_ids (Optional[list[str]]): 保留的附件ID列表。
         files (Optional[list[UploadFile]]): 本次新增的图片文件列表。
         scope (ManagementScope): 管理系统作用域对象。
         current_user (User): 当前登录用户对象。
@@ -175,31 +176,31 @@ async def update_submission(
     if current_user.role != UserRole.STUDENT:
         raise HTTPException(status_code=403, detail="仅学生可修改自己的提交")
     student_id = await _get_current_student_id_or_404(current_user, db)
-    service = SubmissionService(db)
-    submission = await service.get_submission(id, scope.management_system_id)
+    submission_service = SubmissionService(db)
+    submission = await submission_service.get_submission(id, scope.management_system_id)
     if not submission:
         raise HTTPException(status_code=404, detail="提交记录不存在")
     if submission.student_id != student_id:
         raise HTTPException(status_code=403, detail="仅可修改自己的提交")
     try:
-        kept_image_paths = service.validate_retained_image_paths(
-            current_image_paths=submission.image_paths,
-            retained_image_paths=existing_image_paths,
-        )
-        uploaded_image_paths = await service.upload_submission_images(
+        uploaded_attachment_ids = await submission_service.upload_submission_images(
             files or [],
             scope.management_system_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # 合并保留的和新上传的附件ID
+    attachment_ids = list(set((retained_attachment_ids or []) + uploaded_attachment_ids))
+
     body = SubmissionCreate(
         content=content.strip() if content and content.strip() else None,
-        image_paths=[*kept_image_paths, *uploaded_image_paths],
+        attachment_ids=attachment_ids,
         student_id=student_id,
     )
-    if not body.content and not body.image_paths:
+    if not body.content and not body.attachment_ids:
         raise HTTPException(status_code=400, detail="提交内容和图片不能同时为空")
-    updated_submission = await service.update_submission(id, body, scope.management_system_id)
+    updated_submission = await submission_service.update_submission(id, body, scope.management_system_id)
     if not updated_submission:
         raise HTTPException(status_code=404, detail="提交记录不存在")
     return updated_submission
