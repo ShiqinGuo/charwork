@@ -2,6 +2,7 @@ from typing import Optional, List, Any
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from enum import Enum
+from app.schemas.attachment import AttachmentResponse
 
 
 class SubmissionStatus(str, Enum):
@@ -9,13 +10,18 @@ class SubmissionStatus(str, Enum):
     GRADED = "graded"
 
 
+class SubmissionTransitionEvent(str, Enum):
+    RESUBMIT = "resubmit"
+    GRADE = "grade"
+
+
 class SubmissionBase(BaseModel):
     content: Optional[str] = None
-    image_paths: Optional[List[str]] = None
 
 
 class SubmissionCreate(SubmissionBase):
     student_id: Optional[str] = None
+    attachment_ids: Optional[List[str]] = None
 
 
 class SubmissionGrade(BaseModel):
@@ -38,6 +44,7 @@ class SubmissionResponse(SubmissionBase):
     score: Optional[int] = None
     teacher_feedback: Optional[str] = None
     ai_feedback: Optional[Any] = None
+    attachments: List[AttachmentResponse] = []
     submitted_at: datetime
     graded_at: Optional[datetime] = None
 
