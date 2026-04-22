@@ -207,7 +207,9 @@ class SubmissionService:
             new_attachment_ids=new_attachment_ids,
             publish_outbox=True,
         )
-        return SubmissionResponse.model_validate(submission)
+        # refresh 不 eager load 关系，需重新查询以避免 async lazy load 报错
+        reloaded = await self.repo.get(submission.id)
+        return SubmissionResponse.model_validate(reloaded)
 
     async def update_submission(
         self,
@@ -269,7 +271,9 @@ class SubmissionService:
             updated_submission.id,
             new_attachment_ids=added_attachment_ids,
         )
-        return SubmissionResponse.model_validate(updated_submission)
+        # refresh 不 eager load 关系，需重新查询以避免 async lazy load 报错
+        reloaded = await self.repo.get(updated_submission.id)
+        return SubmissionResponse.model_validate(reloaded)
 
     async def grade_submission(
         self,

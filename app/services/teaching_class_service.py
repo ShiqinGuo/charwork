@@ -17,6 +17,7 @@ from app.models.teaching_class import (
 )
 from app.models.user import User
 from app.repositories.course_repo import CourseRepository
+from app.repositories.student_class_repo import StudentClassRepository
 from app.repositories.teaching_class_repo import TeachingClassRepository
 from app.schemas.course import CourseSummary
 from app.schemas.teaching_class import (
@@ -48,6 +49,7 @@ class TeachingClassService:
         self.db = db
         self.repo = TeachingClassRepository(db)
         self.course_repo = CourseRepository(db)
+        self.student_class_repo = StudentClassRepository(db)
 
     async def get_teaching_class(self, id: str) -> TeachingClassResponse | None:
         """
@@ -128,7 +130,9 @@ class TeachingClassService:
             is_default=False,
         )
         created = await self.repo.create(item)
-        return self._to_response(created)
+        # repo.create 不 eager load 关系，需重新查询以避免 async lazy load 报错
+        reloaded = await self.repo.get(created.id)
+        return self._to_response(reloaded)
 
     async def list_members(self, teaching_class_id: str) -> TeachingClassMemberListResponse:
         """
@@ -210,12 +214,13 @@ class TeachingClassService:
         can_join = token_status == TeachingClassJoinTokenStatus.ACTIVE and existing_member is None
         if teaching_class is None:
             raise ValueError("教学班级不存在")
+        teaching_class_response = self._to_response(teaching_class)
         return TeachingClassJoinPreviewResponse(
             token_status=token_status,
             can_join=can_join,
             already_joined=existing_member is not None,
             expires_at=token_item.expires_at,
-            teaching_class=self._to_response(teaching_class),
+            teaching_class=teaching_class_response,
             courses=[self._to_course_summary(item) for item in courses],
             member=self._to_member_response(existing_member) if existing_member else None,
         )
@@ -273,6 +278,14 @@ class TeachingClassService:
         token_item.last_used_at = datetime.now()
         await self.repo.save()
         await self.repo.refresh(member)
+
+        # 同步写入 StudentClass，保证学生端"我的班级"列表能查到该班级。
+        # 用 get_by_student_and_class 做幂等检查，避免唯一约束冲突。
+        existing_sc = await self.student_class_repo.get_by_student_and_class(
+            current_student_id, token_item.teaching_class_id
+        )
+        if not existing_sc:
+            await self.student_class_repo.create(current_student_id, token_item.teaching_class_id)
 
         courses = await self.course_repo.list_by_teaching_class(token_item.teaching_class_id)
         return TeachingClassJoinConfirmResponse(

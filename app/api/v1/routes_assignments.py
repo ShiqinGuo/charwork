@@ -17,6 +17,7 @@ from app.schemas.assignment import (
     AssignmentTransitionRequest,
     AssignmentTransitionResponse,
 )
+from app.schemas.attachment import AttachmentResponse
 from app.services.attachment_service import AttachmentService
 from app.services.assignment_service import AssignmentService
 from app.utils.pagination import resolve_pagination
@@ -168,7 +169,7 @@ async def create_assignment(
         raise _bad_request_error(exc) from exc
 
 
-@router.post("/attachments/upload")
+@router.post("/attachments/upload", response_model=AttachmentResponse)
 async def upload_assignment_attachment(
     file: UploadFile = File(...),
     current_teacher: Teacher = Depends(get_current_teacher),
@@ -184,7 +185,7 @@ async def upload_assignment_attachment(
         db (AsyncSession): 数据库会话，用于执行持久化操作。
 
     返回值：
-        dict: 返回包含attachment_id的字典。
+        AttachmentResponse: 返回完整附件信息。
     """
     try:
         service = AttachmentService(db)
@@ -193,7 +194,7 @@ async def upload_assignment_attachment(
             owner_type="assignment",
             owner_id="",
         )
-        return {"attachment_id": attachment.id}
+        return attachment
     except ValueError as exc:
         raise _bad_request_error(exc) from exc
 

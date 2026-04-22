@@ -5,18 +5,31 @@
 并提供 FastAPI 依赖注入用的 get_db 生成器。
 """
 
+import sys
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 from app.core.config import settings
+
+ENGINE_OPTIONS = {
+    "echo": settings.SQL_ECHO,
+}
+
+if sys.platform == "win32" and settings.ENVIRONMENT == "dev":
+    # Windows 下 Celery 任务通过 asyncio.run 创建临时事件循环时，
+    # aiomysql 连接池可能在回收旧连接时命中已关闭的 loop。
+    ENGINE_OPTIONS["poolclass"] = NullPool
+else:
+    # 长连接场景下主动探活，避免取到被数据库侧回收的失效连接。
+    ENGINE_OPTIONS["pool_pre_ping"] = True
+    # 与常见 MySQL wait_timeout 保持安全间隔，降低“服务器已断开连接”错误。
+    ENGINE_OPTIONS["pool_recycle"] = 3600
 
 # 创建异步引擎
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.SQL_ECHO,
-    # 长连接场景下主动探活，避免取到被数据库侧回收的失效连接。
-    pool_pre_ping=True,
-    # 与常见 MySQL wait_timeout 保持安全间隔，降低“服务器已断开连接”错误。
-    pool_recycle=3600,
+    **ENGINE_OPTIONS,
 )
 
 # 创建会话工厂

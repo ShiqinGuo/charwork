@@ -28,7 +28,7 @@ _PROMPT_TEMPLATE = (
     "- structure_score：结构布局（间架比例、重心）\n"
     "- overall_score：整体气韵\n"
     "以 JSON 格式返回，不要输出其他内容。示例：\n"
-    '{{{"stroke_score":7,"structure_score":8,"overall_score":6,"summary":"..."}}}'
+    '{{"stroke_score":7,"structure_score":8,"overall_score":6,"summary":"..."}}'
 )
 
 _JSON_PATTERN = re.compile(r'\{.*\}', re.DOTALL)
