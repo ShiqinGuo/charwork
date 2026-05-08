@@ -65,6 +65,17 @@ class BaseSearchService:
     async def reindex(self) -> ReindexResponse | int:
         raise NotImplementedError
 
+    async def _refresh_index_safe(self) -> None:
+        """安全刷新索引，失败时仅记录日志。"""
+        try:
+            await self.es.indices.refresh(index=self.index_name)
+        except Exception:
+            logger.exception("ES refresh 索引失败: %s", self.index_name)
+
+    def _build_reindex_response(self, indexed: int, failed: int) -> ReindexResponse:
+        status = "success" if failed == 0 else "partial"
+        return ReindexResponse(status=status, indexed=indexed, failed=failed)
+
     @classmethod
     def invalidate_index_cache(cls, index_name: str | None = None) -> None:
         if index_name:

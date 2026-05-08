@@ -37,7 +37,6 @@ from app.api.v1 import (
 from app.core.app_state import stroke_service
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import setup_logging
 from app.services.hanzi_dictionary_search_service import HanziDictionarySearchService
 from app.services.hanzi_dictionary_service import HanziDictionaryService
@@ -115,21 +114,22 @@ async def _bootstrap_application() -> None:
     async with AsyncSessionLocal() as db:
         await ManagementSystemService(db).backfill_default_systems()
         await HanziDictionaryService(db).initialize_from_strokes(settings.STROKES_FILE_PATH, force=False)
-        await _bootstrap_es_indexes(db)
+        await _bootstrap_es_indexes()
 
 
-async def _safe_ensure_es_index(service_cls: type, db: AsyncSession, error_msg: str) -> None:
+async def _safe_ensure_es_index(service_cls: type, error_msg: str) -> None:
     """安全执行 ES 索引初始化，失败时仅记录日志不阻断启动。"""
-    try:
-        await service_cls(db).ensure_index_with_bootstrap()
-    except Exception:
-        logger.exception(error_msg)
+    async with AsyncSessionLocal() as db:
+        try:
+            await service_cls(db).ensure_index_with_bootstrap()
+        except Exception:
+            logger.exception(error_msg)
 
 
-async def _bootstrap_es_indexes(db: AsyncSession) -> None:
-    """并发初始化所有 ES 索引，各索引互不影响。"""
+async def _bootstrap_es_indexes() -> None:
+    """并发初始化所有 ES 索引，各索引互不影响。每个任务使用独立 session 避免并发冲突。"""
     tasks = [
-        _safe_ensure_es_index(cls, db, msg) for cls, msg in _ES_BOOTSTRAP_TASKS
+        _safe_ensure_es_index(cls, msg) for cls, msg in _ES_BOOTSTRAP_TASKS
     ]
     await asyncio.gather(*tasks)
 

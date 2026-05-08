@@ -61,10 +61,6 @@ class CrossSearchService(BaseSearchService):
             },
         )
 
-    async def ensure_index_with_bootstrap(self) -> ReindexResponse:
-        await self.ensure_index()
-        return await self.reindex()
-
     def _build_payload(self, document: SearchDocument) -> dict:
         payload = {
             "module": document.module,
@@ -103,12 +99,8 @@ class CrossSearchService(BaseSearchService):
                 logger.exception("ES bulk 写入失败: module=%s", config.module)
                 failed += len(actions)
         if indexed > 0:
-            try:
-                await self.es.indices.refresh(index=self.index_name)
-            except Exception:
-                logger.exception("ES refresh 索引失败: %s", self.index_name)
-        status = "success" if failed == 0 else "partial"
-        return ReindexResponse(status=status, indexed=indexed, failed=failed)
+            await self._refresh_index_safe()
+        return self._build_reindex_response(indexed, failed)
 
     async def apply_cdc_change(self, table: str, operation: str, data: dict) -> None:
         await self.ensure_index()

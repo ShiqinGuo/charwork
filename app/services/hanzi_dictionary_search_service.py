@@ -85,12 +85,8 @@ class HanziDictionarySearchService(BaseSearchService):
         ]
         success, failed = await self._bulk_index(actions)
         if success > 0:
-            try:
-                await self.es.indices.refresh(index=self.index_name)
-            except Exception:
-                logger.exception("ES refresh 索引失败: %s", self.index_name)
-        status = "success" if failed == 0 else "partial"
-        return ReindexResponse(status=status, indexed=success, failed=failed)
+            await self._refresh_index_safe()
+        return self._build_reindex_response(success, failed)
 
     async def index_document(self, item: HanziDictionary, refresh: bool = False) -> None:
         await self._index_document(self._document_id(item.id), self._build_document(item), refresh=refresh)

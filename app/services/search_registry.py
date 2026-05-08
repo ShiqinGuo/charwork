@@ -79,15 +79,8 @@ async def _preload_comment_scope_maps(db: AsyncSession) -> dict[str, Any]:
     }
 
 
-async def _preload_assignment_context(db: AsyncSession) -> dict[str, Any]:
-    return {"teacher_user_ids": await _preload_teacher_user_ids(db)}
-
-
-async def _preload_course_context(db: AsyncSession) -> dict[str, Any]:
-    return {"teacher_user_ids": await _preload_teacher_user_ids(db)}
-
-
-async def _preload_teaching_class_context(db: AsyncSession) -> dict[str, Any]:
+async def _preload_teacher_context(db: AsyncSession) -> dict[str, Any]:
+    """assignment / course / teaching_class 共享的 teacher 预加载。"""
     return {"teacher_user_ids": await _preload_teacher_user_ids(db)}
 
 
@@ -102,6 +95,19 @@ async def _get_teacher_user_id_fallback(db: AsyncSession, teacher_id: str | None
         return None
     result = await db.execute(select(Teacher.user_id).where(Teacher.id == teacher_id))
     return result.scalar_one_or_none()
+
+
+async def _resolve_teacher_user_id(
+    db: AsyncSession, teacher_id: str | None, context: dict
+) -> str | None:
+    """从 context 解析 teacher_user_id，context 为空时走 CDC 逐条回退。"""
+    if not teacher_id:
+        return None
+    teacher_user_ids = context.get("teacher_user_ids", {})
+    teacher_user_id = teacher_user_ids.get(teacher_id)
+    if not teacher_user_id and "teacher_user_ids" not in context:
+        teacher_user_id = await _get_teacher_user_id_fallback(db, teacher_id)
+    return teacher_user_id
 
 
 # ===== load 函数 =====
@@ -159,11 +165,7 @@ async def _load_student(db: AsyncSession, source_id: str) -> Student | None:
 async def _build_assignment_document(
     db: AsyncSession, item: Assignment, context: dict
 ) -> SearchDocument | None:
-    teacher_user_ids = context.get("teacher_user_ids", {})
-    teacher_user_id = teacher_user_ids.get(item.teacher_id)
-    # CDC 回退：context 中无 teacher_user_ids 键时逐条查询
-    if not teacher_user_id and item.teacher_id and "teacher_user_ids" not in context:
-        teacher_user_id = await _get_teacher_user_id_fallback(db, item.teacher_id)
+    teacher_user_id = await _resolve_teacher_user_id(db, item.teacher_id, context)
     if not teacher_user_id:
         return None
     return SearchDocument(
@@ -254,10 +256,7 @@ async def _build_hanzi_document(
 async def _build_course_document(
     db: AsyncSession, item: Course, context: dict
 ) -> SearchDocument | None:
-    teacher_user_ids = context.get("teacher_user_ids", {})
-    teacher_user_id = teacher_user_ids.get(item.teacher_id)
-    if not teacher_user_id and item.teacher_id and "teacher_user_ids" not in context:
-        teacher_user_id = await _get_teacher_user_id_fallback(db, item.teacher_id)
+    teacher_user_id = await _resolve_teacher_user_id(db, item.teacher_id, context)
     if not teacher_user_id:
         return None
     return SearchDocument(
@@ -276,10 +275,7 @@ async def _build_course_document(
 async def _build_teaching_class_document(
     db: AsyncSession, item: TeachingClass, context: dict
 ) -> SearchDocument | None:
-    teacher_user_ids = context.get("teacher_user_ids", {})
-    teacher_user_id = teacher_user_ids.get(item.teacher_id)
-    if not teacher_user_id and item.teacher_id and "teacher_user_ids" not in context:
-        teacher_user_id = await _get_teacher_user_id_fallback(db, item.teacher_id)
+    teacher_user_id = await _resolve_teacher_user_id(db, item.teacher_id, context)
     if not teacher_user_id:
         return None
     return SearchDocument(
@@ -336,7 +332,7 @@ SEARCH_MODULE_REGISTRY: dict[str, SearchModuleConfig] = {
         load_all=_load_all_assignments,
         load_one=_load_assignment,
         build_document=_build_assignment_document,
-        preload=_preload_assignment_context,
+        preload=_preload_teacher_context,
     ),
     "comment": SearchModuleConfig(
         table="comment",
@@ -360,7 +356,7 @@ SEARCH_MODULE_REGISTRY: dict[str, SearchModuleConfig] = {
         load_all=_load_all_courses,
         load_one=_load_course,
         build_document=_build_course_document,
-        preload=_preload_course_context,
+        preload=_preload_teacher_context,
     ),
     "teaching_class": SearchModuleConfig(
         table="teaching_class",
@@ -368,7 +364,7 @@ SEARCH_MODULE_REGISTRY: dict[str, SearchModuleConfig] = {
         load_all=_load_all_teaching_classes,
         load_one=_load_teaching_class,
         build_document=_build_teaching_class_document,
-        preload=_preload_teaching_class_context,
+        preload=_preload_teacher_context,
     ),
     "student": SearchModuleConfig(
         table="student",
