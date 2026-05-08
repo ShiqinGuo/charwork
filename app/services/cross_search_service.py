@@ -323,7 +323,7 @@ class CrossSearchService(BaseSearchService):
             "assignment": f"/assignments/{source_id}",
             "student": f"/students/{source_id}",
             "course": f"/courses/{source_id}",
-            "teaching_class": "/classes",  # 无独立详情页，跳班级列表
+            "teaching_class": f"/classes/{source_id}",
             "discussion": "/messages",  # 讨论无独立详情页，跳消息列表
         }
         return module_to_path.get(module)

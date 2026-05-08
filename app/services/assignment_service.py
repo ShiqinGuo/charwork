@@ -416,3 +416,102 @@ class AssignmentService:
             affected_students=affected,
         )
 
+
+
+    async def _resolve_assignment_filters(
+        self,
+        current_student_id: Optional[str],
+        course_id: Optional[str],
+    ) -> tuple[Optional[str], Optional[list[str]]]:
+        if not current_student_id:
+            return course_id, None
+        accessible_course_ids = await self.course_repo.list_ids_for_student(current_student_id)
+        if course_id:
+            if course_id in accessible_course_ids:
+                return course_id, None
+            return None, []
+        return course_id, accessible_course_ids
+
+    async def _resolve_course_id(
+        self,
+        requested_course_id: Optional[str],
+        teacher_id: str,
+    ) -> str:
+        if not requested_course_id:
+            raise ValueError("course_id 为必填")
+        course = await self.course_repo.get(requested_course_id)
+        if not course or course.teacher_id != teacher_id:
+            raise ValueError("课程不存在")
+        return course.id
+
+    async def _sync_reminder_plans(self, assignment_id: str) -> None:
+        from app.services.assignment_reminder_service import AssignmentReminderService
+        await AssignmentReminderService(self.repo.db).sync_plans_for_assignment(assignment_id)
+
+    async def _ensure_attachment_uploads_exist(
+        self,
+        attachments: Optional[list] = None,
+        instruction_steps: Optional[list] = None,
+    ) -> None:
+        attachment_ids = self._collect_attachment_ids(attachments, instruction_steps)
+        if attachment_ids:
+            service = AttachmentService(self.repo.db)
+            for attachment_id in attachment_ids:
+                attachment = await service.repo.get(attachment_id)
+                if not attachment:
+                    raise ValueError(f"附件不存在: {attachment_id}")
+
+    async def _sync_attachment_uploads(
+        self,
+        assignment_id: str,
+        attachments: Optional[list] = None,
+        instruction_steps: Optional[list] = None,
+    ) -> None:
+        attachment_ids = self._collect_attachment_ids(attachments, instruction_steps)
+        if attachment_ids:
+            service = AttachmentService(self.repo.db)
+            for attachment_id in attachment_ids:
+                attachment = await service.repo.get(attachment_id)
+                if attachment:
+                    attachment.owner_id = assignment_id
+                    await service.repo.save()
+
+    @staticmethod
+    def _collect_attachment_ids(
+        attachments: Optional[list] = None,
+        instruction_steps: Optional[list] = None,
+    ) -> list[str]:
+        attachment_ids: list[str] = []
+        for item in attachments or []:
+            attachment_id = item.id if hasattr(item, "id") else item.get("id")
+            if attachment_id:
+                attachment_ids.append(attachment_id)
+        for step in instruction_steps or []:
+            step_attachments = step.attachments if hasattr(step, "attachments") else step.get("attachments", [])
+            for item in step_attachments or []:
+                attachment_id = item.id if hasattr(item, "id") else item.get("id")
+                if attachment_id:
+                    attachment_ids.append(attachment_id)
+        return attachment_ids
+
+    @staticmethod
+    def _to_response(item, custom_field_values: Optional[dict] = None) -> AssignmentResponse:
+        character_ids = list(item.hanzi_ids or [])
+        return AssignmentResponse(
+            id=item.id,
+            teacher_id=item.teacher_id,
+            course_id=item.course_id,
+            course_name=getattr(getattr(item, "course", None), "name", None),
+            teaching_class_id=getattr(getattr(item, "course", None), "teaching_class_id", None),
+            title=item.title,
+            description=item.description,
+            character_ids=character_ids,
+            hanzi_ids=character_ids,
+            instruction_steps=list(getattr(item, "instruction_steps", None) or []),
+            attachments=list(getattr(item, "attachments", None) or []),
+            due_date=item.due_date,
+            status=item.status,
+            custom_field_values=custom_field_values or {},
+            created_at=item.created_at,
+            updated_at=item.updated_at,
+        )
