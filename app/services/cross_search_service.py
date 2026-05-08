@@ -85,7 +85,7 @@ class CrossSearchService(BaseSearchService):
         for table, config in self.module_configs.items():
             items = await config.load_all(self.db)
             for item in items:
-                document = await config.build_document(self.db, item)
+                document = await config.build_document(self.db, item, {})
                 if not document:
                     continue
                 try:
@@ -120,7 +120,7 @@ class CrossSearchService(BaseSearchService):
         if not item:
             await self._delete_document(doc_id)
             return
-        document = await config.build_document(self.db, item)
+        document = await config.build_document(self.db, item, {})
         if not document:
             await self._delete_document(doc_id)
             return
