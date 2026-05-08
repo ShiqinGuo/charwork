@@ -591,3 +591,35 @@ class SubmissionService:
             pagination={"page": page, "size": size, "skip": skip, "limit": limit},
         )
         return SubmissionListResponse(**payload)
+
+    async def batch_grade(
+        self,
+        body: "BatchGradeRequest",
+        sender_user_id: str,
+    ) -> "BatchGradeResponse":
+        """批量批改，部分成功模式。"""
+        from app.schemas.submission import (
+            BatchGradeResponse,
+            BatchGradeFailedItem,
+            SubmissionGrade,
+        )
+
+        total = len(body.grades)
+        success = 0
+        failed: list[BatchGradeFailedItem] = []
+
+        for item in body.grades:
+            try:
+                await self.grade_submission(
+                    id=item.submission_id,
+                    body=SubmissionGrade(score=item.score, feedback=item.feedback),
+                    sender_user_id=sender_user_id,
+                )
+                success += 1
+            except Exception as exc:
+                failed.append(BatchGradeFailedItem(
+                    submission_id=item.submission_id,
+                    error=str(exc),
+                ))
+
+        return BatchGradeResponse(total=total, success=success, failed=failed)
