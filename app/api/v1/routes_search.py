@@ -5,11 +5,41 @@ from app.core.auth import get_current_admin, get_current_user
 
 from app.core.database import get_db
 from app.core.security import SessionUser
-from app.schemas.search import CrossSearchResponse, ReindexResponse
+from app.models.user import User, UserRole
+from app.schemas.search import CrossSearchResponse, PermissionContext, ReindexResponse
 from app.services.cross_search_service import CrossSearchService
 
 
 router = APIRouter()
+
+
+async def _build_permission_context(
+    current_user: User,
+    db: AsyncSession,
+) -> PermissionContext:
+    from app.repositories.course_repo import CourseRepository
+    from app.repositories.student_repo import StudentRepository
+    from app.repositories.teaching_class_repo import TeachingClassRepository
+
+    if current_user.role == UserRole.ADMIN:
+        return PermissionContext(role="admin")
+
+    if current_user.role == UserRole.TEACHER:
+        return PermissionContext(role="teacher", user_id=current_user.id)
+
+    # 学生：预查课程和班级
+    student = await StudentRepository(db).get_by_user_id(current_user.id)
+    if not student:
+        return PermissionContext(role="student", user_id=current_user.id)
+    course_ids = await CourseRepository(db).list_ids_for_student(student.id)
+    class_ids = await TeachingClassRepository(db).list_ids_for_student(student.id)
+    return PermissionContext(
+        role="student",
+        user_id=current_user.id,
+        student_user_id=current_user.id,
+        course_ids=course_ids,
+        class_ids=class_ids,
+    )
 
 
 @router.get("/", response_model=CrossSearchResponse)
@@ -35,11 +65,13 @@ async def cross_search(
         None: 无返回值。
     """
     try:
+        perm_ctx = await _build_permission_context(current_user, db)
         return await CrossSearchService(db).search(
             keyword=keyword,
             current_user=current_user,
             modules=modules,
             limit=limit,
+            permission_ctx=perm_ctx,
         )
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"检索服务不可用：{str(e)}")

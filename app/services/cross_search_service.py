@@ -132,6 +132,7 @@ class CrossSearchService(BaseSearchService):
         current_user: SessionUser,
         modules: Optional[list[str]] = None,
         limit: int = 20,
+        permission_ctx: PermissionContext | None = None,
     ) -> CrossSearchResponse:
         await self.ensure_index()
         allowed_modules = self._normalize_requested_modules(modules)
@@ -146,6 +147,9 @@ class CrossSearchService(BaseSearchService):
         filter_query: list[dict] = []
         if allowed_modules:
             filter_query.append({"terms": {"module": allowed_modules}})
+        # 接入权限过滤，ES 直接返回用户可见结果
+        if permission_ctx:
+            filter_query.extend(self._build_permission_filter(permission_ctx))
         response = await self.es.search(
             index=self.index_name,
             body={
@@ -155,15 +159,10 @@ class CrossSearchService(BaseSearchService):
                         "filter": filter_query,
                     }
                 },
-                "size": min(max(limit * 5, limit), 100),
+                "size": limit,
             },
         )
         hits = response.get("hits", {}).get("hits", [])
-        hits = await self._filter_hits_by_permissions(
-            hits=hits,
-            current_user=current_user,
-            modules=allowed_modules,
-        )
         items = [self._to_search_hit(hit) for hit in hits[:limit]]
         return CrossSearchResponse(keyword=keyword, total=len(items), items=items)
 
