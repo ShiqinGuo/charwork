@@ -2,7 +2,10 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from typing import Any, AsyncIterator
 
 from volcenginesdkarkruntime import AsyncArk
@@ -30,6 +33,8 @@ from app.utils.redis_cache import CACHE_TTL_LONG, cache_delete, cache_get, cache
 
 logger = logging.getLogger(__name__)
 
+MAX_TOOL_ROUNDS = 5
+
 STUDENT_ID_PATTERN = re.compile(r"(stu_[a-zA-Z0-9]+|[a-zA-Z0-9]{10,50})")
 
 SYSTEM_PROMPT = (
@@ -40,7 +45,6 @@ SYSTEM_PROMPT = (
     "如缺少必要上下文，要明确指出。"
 )
 
-# LLM function calling 工具定义
 TOOL_DEFINITIONS = [
     {
         "type": "function",
@@ -76,6 +80,27 @@ TOOL_DEFINITIONS = [
 ]
 
 
+class StreamPhase(str, Enum):
+    THINKING = "thinking"
+    TOOL_CALLING = "tool_calling"
+    ANSWERING = "answering"
+    DONE = "done"
+
+
+@dataclass
+class StreamContext:
+    """状态机流转上下文。"""
+    messages: list[dict[str, Any]]
+    tool_calls_record: list[dict[str, Any]] = field(default_factory=list)
+    round: int = 0
+    next_phase: StreamPhase = StreamPhase.THINKING
+    # THINKING 阶段收集的原始结果
+    thinking_content: str = ""
+    thinking_reasoning: str = ""
+    thinking_finish_reason: str | None = None
+    thinking_tool_calls: list[dict[str, Any]] = field(default_factory=list)
+
+
 class AIChatService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -86,6 +111,70 @@ class AIChatService:
             api_key=self._get_api_key(),
         )
 
+    # ---- 工具分派字典 ----
+
+    def _tool_search_resources(self, args: dict[str, Any], teacher_user_id: str):
+        """工具: search_resources"""
+        return self.tools_service.search_resources(
+            keyword=args.get("keyword", ""),
+            teacher_user_id=teacher_user_id,
+            modules=args.get("modules"),
+            limit=args.get("limit", 10),
+        )
+
+    @property
+    def _TOOL_HANDLERS(self) -> dict[str, Callable[..., Any]]:
+        return {
+            "search_resources": self._tool_search_resources,
+        }
+
+    async def _execute_tool(
+        self, name: str, args: dict[str, Any], teacher_user_id: str,
+    ) -> dict[str, Any]:
+        """按名称分派工具调用。"""
+        handler = self._TOOL_HANDLERS.get(name)
+        if handler is None:
+            return {"error": f"未知工具: {name}"}
+        return await handler(args, teacher_user_id)
+
+    # ---- 流式收集 ----
+
+    @staticmethod
+    async def _collect_stream_chunk(stream) -> dict[str, Any]:
+        """收集一轮 LLM 流式响应。返回 {finish_reason, content, thinking, tool_calls}。"""
+        content = ""
+        thinking = ""
+        tool_calls: list[dict[str, Any]] = []
+        finish_reason = None
+
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            finish_reason = chunk.choices[0].finish_reason
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                thinking += str(reasoning)
+            if delta.content:
+                content += delta.content
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    if tc.id:
+                        tool_calls.append({"id": tc.id, "name": "", "args": ""})
+                    if tc.function:
+                        if tc.function.name and tool_calls:
+                            tool_calls[-1]["name"] = tc.function.name
+                        if tc.function.arguments and tool_calls:
+                            tool_calls[-1]["args"] += tc.function.arguments
+        return {
+            "finish_reason": finish_reason,
+            "content": content,
+            "thinking": thinking,
+            "tool_calls": tool_calls,
+        }
+
+    # ---- 状态机 ----
+
     async def stream_chat(self, body: AIChatRequest, teacher_user_id: str) -> AsyncIterator[str]:
         conversation = await self._ensure_conversation(
             conversation_id=body.conversation_id or generate_id(),
@@ -93,11 +182,8 @@ class AIChatService:
             teacher_user_id=teacher_user_id,
         )
         await self.repo.create_message(
-            message_id=generate_id(),
-            conversation_id=conversation.id,
-            role="user",
-            content=body.message,
-            tool_calls_json=[],
+            message_id=generate_id(), conversation_id=conversation.id,
+            role="user", content=body.message, tool_calls_json=[],
         )
 
         short_messages, long_memory = await asyncio.gather(
@@ -105,174 +191,139 @@ class AIChatService:
             self._load_long_memory_facts(teacher_user_id),
         )
         messages = self._build_messages(body.message, short_messages, long_memory)
-        yield self._to_sse(AIChatStreamEvent(event="status", data={"phase": "analysis", "message": "正在分析问题"}))
 
-        # 第一轮调用 LLM（流式），检查是否需要 function calling
-        tool_calls_record: list[AIChatToolCall] = []
-        first_stream = None
-        try:
-            first_stream = await self.ark_client.chat.completions.create(
-                model=self._get_model(),
-                messages=messages,
-                tools=TOOL_DEFINITIONS,
-                tool_choice="auto",
-                stream=True,
-            )
-        except Exception as exc:
-            logger.error("调用 AI 模型失败: %s", exc)
-            error_answer = "当前 AI 服务不可用，请稍后重试。"
-            yield self._to_sse(AIChatStreamEvent(event="message_chunk", data={"content": error_answer}))
-            yield self._to_sse(AIChatStreamEvent(event="done", data={
-                "conversation_id": conversation.id, "message_id": "", "tool_calls": [], "answer": error_answer,
-            }))
-            return
+        ctx = StreamContext(
+            messages=messages,
+            next_phase=StreamPhase.THINKING,
+        )
 
-        # 收集第一轮流式响应
-        first_response_content = ""
-        first_response_thinking = ""
-        first_tool_call_id = ""
-        first_tool_call_name = ""
-        first_tool_call_args = ""
-        finish_reason = None
+        while ctx.next_phase != StreamPhase.DONE:
+            handler = self._PHASE_HANDLERS[ctx.next_phase]
+            async for sse in handler(self, ctx, teacher_user_id):
+                yield sse
 
-        async for chunk in first_stream:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            finish_reason = chunk.choices[0].finish_reason
-
-            # 流式输出思考过程
-            reasoning_content = getattr(delta, "reasoning_content", None)
-            if reasoning_content:
-                first_response_thinking += str(reasoning_content)
-                yield self._to_sse(
-                    AIChatStreamEvent(event="thinking_chunk", data={"content": str(reasoning_content)})
-                )
-
-            # 收集内容（如果有）
-            if delta.content:
-                first_response_content += delta.content
-
-            # 收集工具调用信息
-            if delta.tool_calls:
-                for tool_call_delta in delta.tool_calls:
-                    if tool_call_delta.id:
-                        first_tool_call_id = tool_call_delta.id
-                    if tool_call_delta.function:
-                        if tool_call_delta.function.name:
-                            first_tool_call_name = tool_call_delta.function.name
-                        if tool_call_delta.function.arguments:
-                            first_tool_call_args += tool_call_delta.function.arguments
-
-        # 如果 LLM 决定调用工具
-        if finish_reason == "tool_calls" and first_tool_call_name:
-            # 构建 assistant 消息
-            assistant_message = {
-                "role": "assistant",
-                "content": first_response_content or None,
-                "tool_calls": [{
-                    "id": first_tool_call_id,
-                    "type": "function",
-                    "function": {
-                        "name": first_tool_call_name,
-                        "arguments": first_tool_call_args,
-                    },
-                }],
-            }
-            messages.append(assistant_message)
-
-            fn_name = first_tool_call_name
-            fn_args = json.loads(first_tool_call_args) if first_tool_call_args else {}
-
-            yield self._to_sse(AIChatStreamEvent(
-                event="tool_call_start",
-                data={"name": fn_name, "args": fn_args},
-            ))
-
-            tool_result = await self._execute_tool(
-                fn_name, fn_args, teacher_user_id,
-            )
-            tool_calls_record.append(AIChatToolCall(
-                name=fn_name, args=fn_args, result=tool_result,
-            ))
-
-            yield self._to_sse(AIChatStreamEvent(
-                event="tool_call_result",
-                data={"name": fn_name, "result": tool_result},
-            ))
-
-            # 将工具结果作为 tool message 追加
-            messages.append({
-                "role": "tool",
-                "tool_call_id": first_tool_call_id,
-                "content": json.dumps(tool_result, ensure_ascii=False),
-            })
-
-        # 流式调用 LLM 生成最终回答（无论是否经过工具调用）
-        yield self._to_sse(AIChatStreamEvent(event="status", data={"phase": "answer", "message": "正在生成回复"}))
-        collector = await self._stream_model_response(messages)
-        async for sse_line in collector:
-            if sse_line:
-                yield sse_line
-        final_answer = self._normalize_message_content(collector.collected_text)
-
+        # 持久化
+        tool_calls_models = [AIChatToolCall(**tc) for tc in ctx.tool_calls_record]
         assistant_message = await self.repo.create_message(
-            message_id=generate_id(),
-            conversation_id=conversation.id,
-            role="assistant",
-            content=final_answer,
-            tool_calls_json=[item.model_dump() for item in tool_calls_record],
+            message_id=generate_id(), conversation_id=conversation.id,
+            role="assistant", content=ctx.thinking_content,
+            tool_calls_json=[tc.model_dump() for tc in tool_calls_models],
         )
         await self.repo.touch_conversation(conversation)
         await self._persist_long_memory_facts(
-            conversation_id=conversation.id,
-            message_id=assistant_message.id,
+            conversation_id=conversation.id, message_id=assistant_message.id,
             teacher_user_id=teacher_user_id,
             student_id=body.student_id or self._extract_student_id(body.message),
-            tool_calls=tool_calls_record,
+            tool_calls=tool_calls_models,
         )
         await self.repo.commit()
         await self._refresh_short_memory_cache(conversation.id)
 
-        yield self._to_sse(
-            AIChatStreamEvent(
-                event="done",
-                data={
-                    "conversation_id": conversation.id,
-                    "message_id": assistant_message.id,
-                    "tool_calls": [call.model_dump() for call in tool_calls_record],
-                    "answer": final_answer,
-                },
-            )
-        )
+        yield self._to_sse(AIChatStreamEvent(event="done", data={
+            "conversation_id": conversation.id,
+            "message_id": assistant_message.id,
+            "tool_calls": [tc.model_dump() for tc in tool_calls_models],
+            "answer": ctx.thinking_content,
+        }))
 
-    async def _execute_tool(
-        self,
-        name: str,
-        args: dict[str, Any],
-        teacher_user_id: str,
-    ) -> dict[str, Any]:
-        """根据工具名称分派执行，返回结果字典。"""
-        if name == "search_resources":
-            return await self.tools_service.search_resources(
-                keyword=args.get("keyword", ""),
-                teacher_user_id=teacher_user_id,
-                modules=args.get("modules"),
-                limit=args.get("limit", 10),
-            )
-        return {"error": f"未知工具: {name}"}
+    # ---- Phase handlers ----
 
-    async def _stream_model_response(
-        self,
-        messages: list[dict[str, Any]],
-    ) -> "_StreamCollector":
-        """流式调用 LLM 并返回一个可迭代的收集器，同时收集完整文本。"""
-        stream = await self.ark_client.chat.completions.create(
-            model=self._get_model(),
-            messages=messages,
-            stream=True,
-        )
-        return _StreamCollector(stream)
+    async def _handle_thinking(self, ctx: StreamContext, teacher_user_id: str) -> AsyncIterator[str]:
+        """THINKING: LLM + tools 流式调用，收集响应。"""
+        ctx.round += 1
+        yield self._to_sse(AIChatStreamEvent(event="status", data={
+            "phase": "analysis", "message": "正在分析问题",
+        }))
+        try:
+            stream = await self.ark_client.chat.completions.create(
+                model=self._get_model(), messages=ctx.messages,
+                tools=TOOL_DEFINITIONS, tool_choice="auto", stream=True,
+            )
+        except Exception as exc:
+            logger.error("调用 AI 模型失败: %s", exc)
+            ctx.thinking_content = "当前 AI 服务不可用，请稍后重试。"
+            yield self._to_sse(AIChatStreamEvent(event="message_chunk", data={"content": ctx.thinking_content}))
+            ctx.next_phase = StreamPhase.DONE
+            return
+
+        result = await self._collect_stream_chunk(stream)
+
+        # 流式输出思考过程
+        if result["thinking"]:
+            yield self._to_sse(AIChatStreamEvent(event="thinking_chunk", data={"content": result["thinking"]}))
+
+        ctx.thinking_content = result["content"]
+        ctx.thinking_finish_reason = result["finish_reason"]
+        ctx.thinking_tool_calls = result["tool_calls"]
+
+        has_tool_calls = result["finish_reason"] == "tool_calls" and result["tool_calls"]
+        if has_tool_calls and ctx.round < MAX_TOOL_ROUNDS:
+            # 保存 assistant 消息（含 tool_calls）
+            ctx.messages.append({
+                "role": "assistant",
+                "content": result["content"] or None,
+                "tool_calls": [
+                    {"id": tc["id"], "type": "function", "function": {"name": tc["name"], "arguments": tc["args"]}}
+                    for tc in result["tool_calls"]
+                ],
+            })
+            ctx.next_phase = StreamPhase.TOOL_CALLING
+        else:
+            if ctx.round >= MAX_TOOL_ROUNDS and has_tool_calls:
+                yield self._to_sse(AIChatStreamEvent(event="status", data={
+                    "phase": "answer", "message": f"已达到最大工具调用轮次（{MAX_TOOL_ROUNDS}），开始生成回答",
+                }))
+            if result["content"]:
+                ctx.messages.append({"role": "assistant", "content": result["content"]})
+            ctx.next_phase = StreamPhase.ANSWERING
+
+    async def _handle_tool_calling(self, ctx: StreamContext, teacher_user_id: str) -> AsyncIterator[str]:
+        """TOOL_CALLING: 执行本轮所有工具调用。"""
+        for tc in ctx.thinking_tool_calls:
+            fn_name = tc["name"]
+            fn_args = json.loads(tc["args"]) if tc["args"] else {}
+            yield self._to_sse(AIChatStreamEvent(event="tool_call_start", data={
+                "name": fn_name, "args": fn_args,
+            }))
+            tool_result = await self._execute_tool(fn_name, fn_args, teacher_user_id)
+            yield self._to_sse(AIChatStreamEvent(event="tool_call_result", data={
+                "name": fn_name, "result": tool_result,
+            }))
+            ctx.tool_calls_record.append({"name": fn_name, "args": fn_args, "result": tool_result})
+            ctx.messages.append({
+                "role": "tool", "tool_call_id": tc["id"],
+                "content": json.dumps(tool_result, ensure_ascii=False),
+            })
+        ctx.next_phase = StreamPhase.THINKING
+
+    async def _handle_answering(self, ctx: StreamContext, teacher_user_id: str) -> AsyncIterator[str]:
+        """ANSWERING: 不带工具 LLM 调用，流式输出最终回答。"""
+        yield self._to_sse(AIChatStreamEvent(event="status", data={
+            "phase": "answer", "message": "正在生成回复",
+        }))
+        try:
+            stream = await self.ark_client.chat.completions.create(
+                model=self._get_model(), messages=ctx.messages, stream=True,
+            )
+        except Exception as exc:
+            logger.error("生成回答失败: %s", exc)
+            err = "生成回答时出错，请稍后重试。"
+            yield self._to_sse(AIChatStreamEvent(event="message_chunk", data={"content": err}))
+            ctx.thinking_content = err
+            ctx.next_phase = StreamPhase.DONE
+            return
+        collector = _StreamCollector(stream)
+        async for sse in collector:
+            if sse:
+                yield sse
+        ctx.thinking_content = self._normalize_message_content(collector.collected_text)
+        ctx.next_phase = StreamPhase.DONE
+
+    _PHASE_HANDLERS: dict[StreamPhase, Callable] = {
+        StreamPhase.THINKING: _handle_thinking,
+        StreamPhase.TOOL_CALLING: _handle_tool_calling,
+        StreamPhase.ANSWERING: _handle_answering,
+    }
 
     def _build_messages(
         self,
