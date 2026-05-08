@@ -75,25 +75,33 @@ class CrossSearchService(BaseSearchService):
         payload.update(document.extra_fields)
         return payload
 
-    async def _upsert_document(self, doc_id: str, document: SearchDocument) -> None:
-        await self._index_document(doc_id, self._build_payload(document))
-
     async def reindex(self) -> ReindexResponse:
         await self.ensure_index()
         indexed = 0
         failed = 0
         for table, config in self.module_configs.items():
+            context = await config.preload(self.db) if config.preload else {}
             items = await config.load_all(self.db)
+            actions = []
             for item in items:
-                document = await config.build_document(self.db, item, {})
+                document = await config.build_document(self.db, item, context)
                 if not document:
                     continue
-                try:
-                    await self._upsert_document(self._build_document_id(table, document.source_id), document)
-                    indexed += 1
-                except Exception:
-                    logger.exception("ES 写入失败: module=%s source_id=%s", document.module, document.source_id)
-                    failed += 1
+                actions.append({
+                    "_op_type": "index",
+                    "_index": self.index_name,
+                    "_id": self._build_document_id(table, document.source_id),
+                    "_source": self._build_payload(document),
+                })
+            if not actions:
+                continue
+            try:
+                success, errors = await self._bulk_index(actions)
+                indexed += success
+                failed += errors
+            except Exception:
+                logger.exception("ES bulk 写入失败: module=%s", config.module)
+                failed += len(actions)
         if indexed > 0:
             try:
                 await self.es.indices.refresh(index=self.index_name)
@@ -124,7 +132,7 @@ class CrossSearchService(BaseSearchService):
         if not document:
             await self._delete_document(doc_id)
             return
-        await self._upsert_document(doc_id, document)
+        await self._index_document(doc_id, self._build_payload(document))
 
     async def search(
         self,

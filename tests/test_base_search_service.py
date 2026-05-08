@@ -133,3 +133,28 @@ class TestCrossSearchServiceInheritance(unittest.IsolatedAsyncioTestCase):
                 service = CrossSearchService(AsyncMock())
                 await service.ensure_index()
         self.assertEqual(len(fake_es.indices.created), 0)
+
+    async def test_reindex_uses_bulk_index(self):
+        from unittest.mock import MagicMock
+        from app.services.search_registry import SearchModuleConfig, SearchDocument
+
+        fake_es = FakeES()
+        fake_es.indices.exists_response = True
+        doc = SearchDocument(module="test", source_id="1", title="t", content="c")
+        config = SearchModuleConfig(
+            table="test_table",
+            module="test",
+            load_all=AsyncMock(return_value=[MagicMock()]),
+            load_one=AsyncMock(return_value=MagicMock()),
+            build_document=AsyncMock(return_value=doc),
+            preload=AsyncMock(return_value={}),
+        )
+        with patch("app.services.base_search_service.get_es_client", return_value=fake_es):
+            with patch("app.services.cross_search_service.get_enabled_search_module_configs", return_value={"test_table": config}):
+                with patch("app.services.base_search_service.async_bulk", return_value=(1, [])) as mock_bulk:
+                    service = CrossSearchService(AsyncMock())
+                    service.index_name = "test_global_search"
+                    result = await service.reindex()
+        self.assertEqual(result.indexed, 1)
+        self.assertEqual(result.failed, 0)
+        mock_bulk.assert_called_once()
