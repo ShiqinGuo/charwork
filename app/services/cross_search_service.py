@@ -191,6 +191,32 @@ class CrossSearchService(BaseSearchService):
         items = [self._to_search_hit(hit) for hit in hits[:limit]]
         return CrossSearchResponse(keyword=keyword, total=len(items), items=items)
 
+    async def suggest(
+        self, q: str, current_user: SessionUser,
+        modules: list[str] | None = None, limit: int = 10,
+    ) -> list[dict]:
+        """实时搜索建议，支持拼音首字母和部分汉字匹配。"""
+        await self.ensure_index()
+        allowed_modules = self._normalize_requested_modules(modules)
+        filter_query: list[dict] = []
+        if allowed_modules:
+            filter_query.append({"terms": {"module": allowed_modules}})
+        response = await self.es.search(
+            index=self.index_name,
+            body={
+                "query": {
+                    "bool": {
+                        "must": [{"match_phrase_prefix": {"title": q}}],
+                        "filter": filter_query,
+                    }
+                },
+                "size": limit,
+                "_source": ["module", "source_id", "title"],
+            },
+        )
+        hits = response.get("hits", {}).get("hits", [])
+        return [{"module": h["_source"]["module"], "id": h["_source"]["source_id"], "title": h["_source"]["title"]} for h in hits]
+
     async def _filter_hits_by_permissions(
         self,
         hits: list[dict],

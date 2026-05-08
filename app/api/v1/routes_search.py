@@ -97,3 +97,17 @@ async def reindex_search(
         return await CrossSearchService(db).reindex()
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"重建索引失败：{str(e)}")
+
+
+@router.get("/suggest")
+async def search_suggest(
+    q: str = Query(..., min_length=1, description="搜索关键词，支持部分输入"),
+    modules: str | None = Query(None, description="逗号分隔的模块名"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """实时搜索建议，debounce 调用。"""
+    module_list = [m.strip() for m in modules.split(",") if m.strip()] if modules else None
+    return await CrossSearchService(db).suggest(
+        q=q, current_user=current_user, modules=module_list,
+    )
