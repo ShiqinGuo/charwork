@@ -1,6 +1,6 @@
 """
 为什么这样做：共享字典检索独立索引，支持拼音与笔画组合查询，避免数据库全文扫描开销。
-特殊逻辑：笔画重复次数通过动态字段 + 脚本过滤校验，保证“包含且数量满足”的边界语义。
+特殊逻辑：笔画重复次数通过动态字段 + 脚本过滤校验，保证"包含且数量满足"的边界语义。
 """
 
 import logging
@@ -8,13 +8,14 @@ from datetime import datetime
 from typing import Any, Optional
 
 from elasticsearch import NotFoundError
-from elasticsearch.helpers import async_bulk
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.es_client import get_es_client
 from app.models.hanzi_dictionary import HanziDictionary
+from app.schemas.search import ReindexResponse
+from app.services.base_search_service import BaseSearchService
 from app.utils.hanzi_dictionary_parser import (
     build_stroke_unit_count_fields,
     build_stroke_unit_counts,
@@ -27,38 +28,14 @@ from app.utils.hanzi_dictionary_parser import (
 logger = logging.getLogger(__name__)
 
 
-class HanziDictionarySearchService:
+class HanziDictionarySearchService(BaseSearchService):
     REINDEX_BULK_CHUNK_SIZE = 500
 
     def __init__(self, db: AsyncSession):
-        """
-        功能描述：
-            初始化HanziDictionarySearchService并准备运行所需的依赖对象。
-
-        参数：
-            db (AsyncSession): 数据库会话，用于执行持久化操作。
-
-        返回值：
-            None: 无返回值。
-        """
-        self.db = db
-        self.es = get_es_client()
+        super().__init__(db)
         self.index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}_hanzi_dictionary"
 
-    async def ensure_index(self) -> None:
-        """
-        功能描述：
-            确保索引存在，必要时自动补齐。
-
-        参数：
-            无。
-
-        返回值：
-            None: 无返回值。
-        """
-        exists = await self.es.indices.exists(index=self.index_name)
-        if exists:
-            return
+    async def _create_index(self) -> None:
         await self.es.indices.create(
             index=self.index_name,
             body={
@@ -79,80 +56,26 @@ class HanziDictionarySearchService:
             },
         )
 
-    async def ensure_index_with_bootstrap(self) -> int:
-        """
-        功能描述：
-            确保索引withbootstrap存在，必要时自动补齐。
-
-        参数：
-            无。
-
-        返回值：
-            int: 返回int类型的处理结果。
-        """
+    async def ensure_index_with_bootstrap(self) -> ReindexResponse:
         await self.ensure_index()
         count_response = await self.es.count(index=self.index_name)
         total = int(count_response.get("count", 0))
         if total > 0:
-            return 0
+            return ReindexResponse(status="success", indexed=0, failed=0)
         return await self.reindex()
 
-    async def reindex(self) -> int:
-        """
-        功能描述：
-            处理HanziDictionarySearchService。
-
-        参数：
-            无。
-
-        返回值：
-            int: 返回int类型的处理结果。
-        """
+    async def reindex(self) -> ReindexResponse:
         exists = await self.es.indices.exists(index=self.index_name)
         if exists:
             try:
                 await self.es.indices.delete(index=self.index_name)
             except NotFoundError:
                 pass
+        # 清除缓存，因为索引刚被删除
+        BaseSearchService.invalidate_index_cache(self.index_name)
         await self.ensure_index()
         items = (await self.db.execute(select(HanziDictionary))).scalars().all()
-        await self._bulk_index_documents(items)
-        await self.es.indices.refresh(index=self.index_name)
-        return len(items)
-
-    async def index_document(self, item: HanziDictionary, refresh: bool = False) -> None:
-        """
-        功能描述：
-            处理document。
-
-        参数：
-            item (HanziDictionary): 当前处理的实体对象。
-            refresh (bool): 布尔值结果。
-
-        返回值：
-            None: 无返回值。
-        """
-        await self.es.index(
-            index=self.index_name,
-            id=self._document_id(item.id),
-            document=self._build_document(item),
-            refresh=refresh,
-        )
-
-    async def _bulk_index_documents(self, items: list[HanziDictionary]) -> None:
-        """
-        功能描述：
-            批量写入共享字典文档。
-
-        参数：
-            items (list[HanziDictionary]): 需要批量写入的字典实体列表。
-
-        返回值：
-            None: 无返回值。
-        """
-        if not items:
-            return
-        actions = (
+        actions = [
             {
                 "_op_type": "index",
                 "_index": self.index_name,
@@ -160,43 +83,26 @@ class HanziDictionarySearchService:
                 "_source": self._build_document(item),
             }
             for item in items
-        )
-        await async_bulk(
-            self.es,
-            actions,
-            chunk_size=self.REINDEX_BULK_CHUNK_SIZE,
-            refresh=False,
-        )
+        ]
+        success, failed = await self._bulk_index(actions)
+        if success > 0:
+            try:
+                await self.es.indices.refresh(index=self.index_name)
+            except Exception:
+                logger.exception("ES refresh 索引失败: %s", self.index_name)
+        status = "success" if failed == 0 else "partial"
+        return ReindexResponse(status=status, indexed=success, failed=failed)
+
+    async def index_document(self, item: HanziDictionary, refresh: bool = False) -> None:
+        await self._index_document(self._document_id(item.id), self._build_document(item), refresh=refresh)
 
     async def delete_document(self, dictionary_id: str, refresh: bool = False) -> None:
-        """
-        功能描述：
-            删除document。
-
-        参数：
-            dictionary_id (str): 字典ID。
-            refresh (bool): 布尔值结果。
-
-        返回值：
-            None: 无返回值。
-        """
         try:
             await self.es.delete(index=self.index_name, id=self._document_id(dictionary_id), refresh=refresh)
         except NotFoundError:
             return
 
     async def apply_cdc_change(self, operation: str, data: dict[str, Any]) -> None:
-        """
-        功能描述：
-            处理cdcchange。
-
-        参数：
-            operation (str): 字符串结果。
-            data (dict[str, Any]): 字典形式的结果数据。
-
-        返回值：
-            None: 无返回值。
-        """
         await self.ensure_index()
         dictionary_id = str(data.get("id") or "")
         if not dictionary_id:
@@ -220,22 +126,6 @@ class HanziDictionarySearchService:
         stroke_pattern: Optional[str] = None,
         keyword: Optional[str] = None,
     ) -> dict[str, Any]:
-        """
-        功能描述：
-            检索HanziDictionarySearchService。
-
-        参数：
-            skip (int): 分页偏移量。
-            limit (int): 单次查询的最大返回数量。
-            character (Optional[str]): 字符串结果。
-            pinyin (Optional[str]): 字符串结果。
-            stroke_count (Optional[int]): 数量值。
-            stroke_pattern (Optional[str]): 字符串结果。
-            keyword (Optional[str]): 字符串结果。
-
-        返回值：
-            dict[str, Any]: 返回字典形式的结果数据。
-        """
         await self.ensure_index()
         filters: list[dict[str, Any]] = []
         character_keyword = (character or "").strip()
@@ -271,30 +161,10 @@ class HanziDictionarySearchService:
         return {"ids": ids, "total": total}
 
     async def _get_dictionary_item(self, dictionary_id: str) -> Optional[HanziDictionary]:
-        """
-        功能描述：
-            按条件获取字典item。
-
-        参数：
-            dictionary_id (str): 字典ID。
-
-        返回值：
-            Optional[HanziDictionary]: 返回处理结果对象；无可用结果时返回 None。
-        """
         result = await self.db.execute(select(HanziDictionary).where(HanziDictionary.id == dictionary_id))
         return result.scalars().first()
 
     def _build_keyword_filter(self, keyword: Optional[str]) -> Optional[dict[str, Any]]:
-        """
-        功能描述：
-            构建keywordfilter。
-
-        参数：
-            keyword (Optional[str]): 字符串结果。
-
-        返回值：
-            Optional[dict[str, Any]]: 返回处理结果对象；无可用结果时返回 None。
-        """
         if not keyword:
             return None
         trimmed = keyword.strip()
@@ -309,16 +179,6 @@ class HanziDictionarySearchService:
         return {"bool": {"should": clauses, "minimum_should_match": 1}}
 
     def _build_stroke_pattern_filters(self, stroke_pattern: Optional[str]) -> list[dict[str, Any]]:
-        """
-        功能描述：
-            构建笔画patternfilters。
-
-        参数：
-            stroke_pattern (Optional[str]): 字符串结果。
-
-        返回值：
-            list[dict[str, Any]]: 返回列表形式的结果数据。
-        """
         query_counts = build_stroke_unit_counts(stroke_pattern)
         if not query_counts:
             return []
@@ -343,30 +203,10 @@ class HanziDictionarySearchService:
 
     @staticmethod
     def _document_id(dictionary_id: str) -> str:
-        """
-        功能描述：
-            处理标识。
-
-        参数：
-            dictionary_id (str): 字典ID。
-
-        返回值：
-            str: 返回str类型的处理结果。
-        """
         return f"hanzi_dictionary_{dictionary_id}"
 
     @staticmethod
     def _build_document(item: HanziDictionary) -> dict[str, Any]:
-        """
-        功能描述：
-            构建document。
-
-        参数：
-            item (HanziDictionary): 当前处理的实体对象。
-
-        返回值：
-            dict[str, Any]: 返回字典形式的结果数据。
-        """
         updated_at = item.updated_at.isoformat() if isinstance(item.updated_at, datetime) else item.updated_at
         return {
             "dictionary_id": item.id,
