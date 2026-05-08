@@ -1,3 +1,5 @@
+from app.models.submission import Submission
+from app.models.ai_feedback import AIFeedback
 import os
 import unittest
 from datetime import datetime
@@ -10,9 +12,6 @@ os.environ.setdefault("MYSQL_PORT", "3306")
 os.environ.setdefault("MYSQL_USER", "root")
 os.environ.setdefault("MYSQL_PASSWORD", "root")
 os.environ.setdefault("MYSQL_DB", "charwork")
-
-from app.models.ai_feedback import AIFeedback
-from app.models.submission import Submission
 
 
 class TestSubmissionModel(unittest.TestCase):

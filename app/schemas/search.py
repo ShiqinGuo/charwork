@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -18,5 +20,6 @@ class CrossSearchResponse(BaseModel):
 
 
 class ReindexResponse(BaseModel):
-    status: str
+    status: Literal["success", "partial"]
     indexed: int
+    failed: int = 0

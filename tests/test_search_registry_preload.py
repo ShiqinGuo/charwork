@@ -75,7 +75,8 @@ class TestBuildDocumentWithContext(unittest.IsolatedAsyncioTestCase):
         mock_db = AsyncMock()
         # 空上下文触发 CDC 回退
         with unittest.mock.patch.object(
-            _get_teacher_user_id_fallback.__wrapped__ if hasattr(_get_teacher_user_id_fallback, '__wrapped__') else _get_teacher_user_id_fallback,
+            _get_teacher_user_id_fallback.__wrapped__ if hasattr(
+                _get_teacher_user_id_fallback, '__wrapped__') else _get_teacher_user_id_fallback,
             '__call__',
             return_value="fallback-user",
         ):

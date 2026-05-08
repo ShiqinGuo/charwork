@@ -4,6 +4,8 @@
 初始化 FastAPI 应用，配置中间件（CORS、静态文件）、路由、生命周期事件等。
 """
 
+import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -35,11 +37,20 @@ from app.api.v1 import (
 from app.core.app_state import stroke_service
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import setup_logging
 from app.services.hanzi_dictionary_search_service import HanziDictionarySearchService
 from app.services.hanzi_dictionary_service import HanziDictionaryService
 from app.services.management_system_service import ManagementSystemService
 from app.services.cross_search_service import CrossSearchService
+
+logger = logging.getLogger(__name__)
+
+# ES 索引启动任务配置：(服务类, 失败日志消息)
+_ES_BOOTSTRAP_TASKS: list[tuple[type, str]] = [
+    (HanziDictionarySearchService, "ES 汉字字典索引初始化失败，搜索功能暂不可用"),
+    (CrossSearchService, "ES 跨模块检索索引初始化失败，搜索功能暂不可用"),
+]
 
 
 ROOT_MESSAGE = "Shaneguo's project"
@@ -104,8 +115,23 @@ async def _bootstrap_application() -> None:
     async with AsyncSessionLocal() as db:
         await ManagementSystemService(db).backfill_default_systems()
         await HanziDictionaryService(db).initialize_from_strokes(settings.STROKES_FILE_PATH, force=False)
-        await HanziDictionarySearchService(db).ensure_index_with_bootstrap()
-        await CrossSearchService(db).ensure_index_with_bootstrap()
+        await _bootstrap_es_indexes(db)
+
+
+async def _safe_ensure_es_index(service_cls: type, db: AsyncSession, error_msg: str) -> None:
+    """安全执行 ES 索引初始化，失败时仅记录日志不阻断启动。"""
+    try:
+        await service_cls(db).ensure_index_with_bootstrap()
+    except Exception:
+        logger.exception(error_msg)
+
+
+async def _bootstrap_es_indexes(db: AsyncSession) -> None:
+    """并发初始化所有 ES 索引，各索引互不影响。"""
+    tasks = [
+        _safe_ensure_es_index(cls, db, msg) for cls, msg in _ES_BOOTSTRAP_TASKS
+    ]
+    await asyncio.gather(*tasks)
 
 
 def _include_routers(application: FastAPI) -> None:

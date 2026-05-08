@@ -1,3 +1,4 @@
+from app.services.cross_search_service import CrossSearchService
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -109,9 +110,6 @@ class TestBaseSearchService(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-from app.services.cross_search_service import CrossSearchService
 
 
 class TestCrossSearchServiceInheritance(unittest.IsolatedAsyncioTestCase):

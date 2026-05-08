@@ -26,6 +26,8 @@ def get_es_client() -> AsyncElasticsearch:
     """
     global _es_client
     if _es_client is None:
-        # 复用进程级客户端，避免每次调用重复握手和连接池初始化。
-        _es_client = AsyncElasticsearch(hosts=[settings.ELASTICSEARCH_URL])
+        _es_client = AsyncElasticsearch(
+            hosts=[settings.ELASTICSEARCH_URL],
+            request_timeout=settings.ELASTICSEARCH_REQUEST_TIMEOUT,
+        )
     return _es_client
