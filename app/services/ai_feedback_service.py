@@ -60,7 +60,11 @@ class AIFeedbackService:
             logger.warning("generate_ai_feedback: submission %s 不存在", submission_id)
             return
 
-        image_paths: List[str] = submission.image_paths or []
+        from app.repositories.attachment_repo import AttachmentRepository
+        attachments = await AttachmentRepository(self.repo.db).get_by_owner(
+            owner_type="submission", owner_id=submission_id,
+        )
+        image_paths: List[str] = [a.file_url for a in attachments if a.file_url]
         if not image_paths:
             await self.repo.update(submission, {
                 "ai_feedback": {"status": "done", "generated_at": _now(), "items": []}
