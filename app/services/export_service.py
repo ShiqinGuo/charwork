@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 import pandas as pd
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -198,3 +199,95 @@ class ExportService:
             if candidate and os.path.isfile(candidate):
                 return candidate
         return None
+
+    async def export_assignments(
+        self, teacher_id: str, course_id: str | None = None,
+        status: str | None = None,
+    ) -> dict:
+        """导出作业列表 Excel。"""
+        import pandas as pd
+        from sqlalchemy import func
+        from app.repositories.assignment_repo import AssignmentRepository
+        from app.models.submission import Submission
+
+        os.makedirs(self.output_dir, exist_ok=True)
+        repo = AssignmentRepository(self.db)
+        items = await repo.get_all(0, 100000, teacher_id, status, course_id, None)
+        rows = []
+        for a in items:
+            sub_stats = await self.db.execute(
+                select(func.count(), func.avg(Submission.score))
+                .where(Submission.assignment_id == a.id)
+            )
+            count, avg_score = sub_stats.first()
+            rows.append({
+                "标题": a.title, "状态": a.status,
+                "截止时间": a.due_date.strftime("%Y-%m-%d %H:%M") if a.due_date else "",
+                "提交人数": count or 0,
+                "平均分": round(float(avg_score), 1) if avg_score else "",
+            })
+        df = pd.DataFrame(rows)
+        filename = f"assignments_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
+        filepath = os.path.join(self.output_dir, filename)
+        df.to_excel(filepath, index=False)
+        return {"file_name": filename, "file_path": filepath, "file_url": f"/media/export_results/{filename}", "total": len(rows)}
+
+    async def export_students(
+        self, teacher_id: str, course_id: str | None = None,
+        class_id: str | None = None,
+    ) -> dict:
+        """导出学生列表 Excel。"""
+        import pandas as pd
+        from app.repositories.student_repo import StudentRepository
+        from app.models.submission import Submission
+
+        os.makedirs(self.output_dir, exist_ok=True)
+        student_repo = StudentRepository(self.db)
+        students = await student_repo.get_all(0, 100000, teacher_id=teacher_id)
+        rows = []
+        for s in students:
+            sub_stats = await self.db.execute(
+                select(func.count(), func.avg(Submission.score))
+                .where(Submission.student_id == s.id)
+            )
+            count, avg_score = sub_stats.first()
+            rows.append({
+                "姓名": s.name, "班级": s.class_name or "",
+                "提交次数": count or 0,
+                "平均分": round(float(avg_score), 1) if avg_score else "",
+            })
+        df = pd.DataFrame(rows)
+        filename = f"students_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
+        filepath = os.path.join(self.output_dir, filename)
+        df.to_excel(filepath, index=False)
+        return {"file_name": filename, "file_path": filepath, "file_url": f"/media/export_results/{filename}", "total": len(rows)}
+
+    async def export_submissions(
+        self, assignment_id: str, student_id: str | None = None,
+        status: str | None = None,
+    ) -> dict:
+        """导出提交记录 Excel。"""
+        import pandas as pd
+        from app.repositories.submission_repo import SubmissionRepository
+        from app.repositories.assignment_repo import AssignmentRepository
+
+        os.makedirs(self.output_dir, exist_ok=True)
+        sub_repo = SubmissionRepository(self.db)
+        items = await sub_repo.get_all_by_assignment(assignment_id, 0, 100000, student_id)
+        assignment = await AssignmentRepository(self.db).get(assignment_id)
+        rows = []
+        for sub in items:
+            if status and sub.status != status:
+                continue
+            rows.append({
+                "学生": getattr(getattr(sub, "student", None), "name", ""),
+                "作业": assignment.title if assignment else "",
+                "得分": sub.score, "评语": sub.teacher_feedback or "",
+                "提交时间": sub.submitted_at.strftime("%Y-%m-%d %H:%M") if sub.submitted_at else "",
+                "状态": sub.status,
+            })
+        df = pd.DataFrame(rows)
+        filename = f"submissions_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
+        filepath = os.path.join(self.output_dir, filename)
+        df.to_excel(filepath, index=False)
+        return {"file_name": filename, "file_path": filepath, "file_url": f"/media/export_results/{filename}", "total": len(rows)}
