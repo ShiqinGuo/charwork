@@ -291,12 +291,13 @@ class CrossSearchService(BaseSearchService):
 
     @staticmethod
     def _build_hit_url(module: str, source_id: str) -> str | None:
+        """返回前端可识别的实体路径，前端根据当前管理体系上下文拼完整 URL。"""
         module_to_path = {
-            "hanzi": f"/management-systems/default/modules/hanzi/{source_id}",
-            "assignment": f"/management-systems/default/modules/assignments/{source_id}",
-            "student": f"/management-systems/default/modules/students/{source_id}",
+            "hanzi": f"/hanzi/{source_id}",
+            "assignment": f"/assignments/{source_id}",
+            "student": f"/students/{source_id}",
             "course": f"/courses/{source_id}",
-            "teaching_class": "/classes",
-            "discussion": "/messages",
+            "teaching_class": f"/classes/{source_id}",
+            "discussion": "/messages",  # 讨论无独立详情页，跳消息列表
         }
         return module_to_path.get(module)
