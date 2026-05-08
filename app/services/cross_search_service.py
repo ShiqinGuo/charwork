@@ -21,6 +21,31 @@ from app.services.search_registry import SearchDocument, get_enabled_search_modu
 
 logger = logging.getLogger(__name__)
 
+# 权限检查字典：模块 → 判断函数(source, user_id/course_ids)
+_TEACHER_PERMISSION_CHECK: dict[str, callable] = {
+    "assignment": lambda s, u: s.get("teacher_user_id") == u,
+    "course": lambda s, u: s.get("teacher_user_id") == u,
+    "teaching_class": lambda s, u: s.get("teacher_user_id") == u,
+    "discussion": lambda s, u: s.get("teacher_user_id") == u,
+    "student": lambda s, u: u in (s.get("teacher_user_ids") or []),
+    "hanzi": lambda s, u: s.get("created_by_user_id") in {None, "", u},
+}
+
+# 学生权限判断：额外传入 course_ids, class_ids, current_user_id
+def _student_permission_check(source: dict, user_id: str, course_ids: set, class_ids: set) -> bool:
+    module = str(source.get("module") or "")
+    if module == "student":
+        return str(source.get("student_user_id") or "") == user_id
+    if module == "hanzi":
+        return not source.get("created_by_user_id")
+    if module in {"assignment", "discussion"}:
+        return str(source.get("course_id") or "") in course_ids
+    if module == "course":
+        return str(source.get("source_id") or "") in course_ids
+    if module == "teaching_class":
+        return str(source.get("source_id") or "") in class_ids
+    return False
+
 
 class CrossSearchService(BaseSearchService):
     def __init__(self, db: AsyncSession):
@@ -187,22 +212,7 @@ class CrossSearchService(BaseSearchService):
             module = str(source.get("module") or "")
             if modules and module not in modules:
                 continue
-            if module == "student" and str(source.get("student_user_id") or "") == current_user.id:
-                filtered_hits.append(hit)
-                continue
-            if module == "hanzi" and not source.get("created_by_user_id"):
-                filtered_hits.append(hit)
-                continue
-            if module == "assignment" and str(source.get("course_id") or "") in course_ids:
-                filtered_hits.append(hit)
-                continue
-            if module == "course" and str(source.get("source_id") or "") in course_ids:
-                filtered_hits.append(hit)
-                continue
-            if module == "teaching_class" and str(source.get("source_id") or "") in class_ids:
-                filtered_hits.append(hit)
-                continue
-            if module == "discussion" and str(source.get("course_id") or "") in course_ids:
+            if _student_permission_check(source, current_user.id, course_ids, class_ids):
                 filtered_hits.append(hit)
         return filtered_hits
 
@@ -222,19 +232,9 @@ class CrossSearchService(BaseSearchService):
         for hit in self._filter_by_modules(hits, modules):
             source = hit.get("_source", {})
             module = str(source.get("module") or "")
-            if module in {"assignment", "course", "teaching_class", "discussion"}:
-                if str(source.get("teacher_user_id") or "") == teacher_user_id:
-                    filtered_hits.append(hit)
-                continue
-            if module == "student":
-                teacher_user_ids = source.get("teacher_user_ids") or []
-                if teacher_user_id in teacher_user_ids:
-                    filtered_hits.append(hit)
-                continue
-            if module == "hanzi":
-                created_by_user_id = source.get("created_by_user_id")
-                if created_by_user_id in {None, "", teacher_user_id}:
-                    filtered_hits.append(hit)
+            check = _TEACHER_PERMISSION_CHECK.get(module)
+            if check and check(source, teacher_user_id):
+                filtered_hits.append(hit)
         return filtered_hits
 
     @staticmethod
