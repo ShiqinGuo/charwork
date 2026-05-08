@@ -16,6 +16,7 @@ from app.schemas.ai_feedback import (
     SubmissionAISummaryTriggerResponse,
 )
 from app.schemas.submission import (
+    BatchGradeRequest, BatchGradeResponse,
     SubmissionCreate, SubmissionGrade, SubmissionListResponse,
     SubmissionResponse, TeacherFeedbackUpdate,
 )
@@ -423,3 +424,16 @@ async def upload_submission_images(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"attachment_ids": attachment_ids}
+
+
+@router.post("/submissions/batch-grade", response_model=BatchGradeResponse)
+async def batch_grade_submissions(
+    body: BatchGradeRequest,
+    current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量批改提交记录，部分成功模式。"""
+    return await SubmissionService(db).batch_grade(
+        body=body,
+        sender_user_id=current_teacher.id,
+    )
