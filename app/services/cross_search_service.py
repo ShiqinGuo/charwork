@@ -6,34 +6,29 @@
 import logging
 from typing import Optional
 
-from elasticsearch import NotFoundError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.es_client import get_es_client
 from app.core.security import SessionUser
 from app.models.user import UserRole
 from app.repositories.course_repo import CourseRepository
 from app.repositories.student_repo import StudentRepository
 from app.repositories.teaching_class_repo import TeachingClassRepository
 from app.schemas.search import CrossSearchResponse, SearchHit, ReindexResponse
+from app.services.base_search_service import BaseSearchService
 from app.services.search_registry import SearchDocument, get_enabled_search_module_configs
 
 
 logger = logging.getLogger(__name__)
 
 
-class CrossSearchService:
+class CrossSearchService(BaseSearchService):
     def __init__(self, db: AsyncSession):
-        self.db = db
-        self.es = get_es_client()
+        super().__init__(db)
         self.index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}_global_search"
         self.module_configs = get_enabled_search_module_configs()
 
-    async def ensure_index(self) -> None:
-        exists = await self.es.indices.exists(index=self.index_name)
-        if exists:
-            return
+    async def _create_index(self) -> None:
         await self.es.indices.create(
             index=self.index_name,
             body={
@@ -70,7 +65,7 @@ class CrossSearchService:
         await self.ensure_index()
         return await self.reindex()
 
-    async def _upsert_document(self, doc_id: str, document: SearchDocument) -> None:
+    def _build_payload(self, document: SearchDocument) -> dict:
         payload = {
             "module": document.module,
             "source_id": document.source_id,
@@ -78,32 +73,34 @@ class CrossSearchService:
             "content": document.content,
         }
         payload.update(document.extra_fields)
-        await self.es.index(
-            index=self.index_name,
-            id=doc_id,
-            document=payload,
-            refresh=False,
-        )
+        return payload
 
-    async def _delete_document(self, doc_id: str) -> None:
-        try:
-            await self.es.delete(index=self.index_name, id=doc_id, refresh=False)
-        except NotFoundError:
-            return
+    async def _upsert_document(self, doc_id: str, document: SearchDocument) -> None:
+        await self._index_document(doc_id, self._build_payload(document))
 
     async def reindex(self) -> ReindexResponse:
         await self.ensure_index()
         indexed = 0
+        failed = 0
         for table, config in self.module_configs.items():
             items = await config.load_all(self.db)
             for item in items:
                 document = await config.build_document(self.db, item)
                 if not document:
                     continue
-                await self._upsert_document(self._build_document_id(table, document.source_id), document)
-                indexed += 1
-        await self.es.indices.refresh(index=self.index_name)
-        return ReindexResponse(status="success", indexed=indexed)
+                try:
+                    await self._upsert_document(self._build_document_id(table, document.source_id), document)
+                    indexed += 1
+                except Exception:
+                    logger.exception("ES 写入失败: module=%s source_id=%s", document.module, document.source_id)
+                    failed += 1
+        if indexed > 0:
+            try:
+                await self.es.indices.refresh(index=self.index_name)
+            except Exception:
+                logger.exception("ES refresh 索引失败: %s", self.index_name)
+        status = "success" if failed == 0 else "partial"
+        return ReindexResponse(status=status, indexed=indexed, failed=failed)
 
     async def apply_cdc_change(self, table: str, operation: str, data: dict) -> None:
         await self.ensure_index()

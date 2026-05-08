@@ -109,3 +109,27 @@ class TestBaseSearchService(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+from app.services.cross_search_service import CrossSearchService
+
+
+class TestCrossSearchServiceInheritance(unittest.IsolatedAsyncioTestCase):
+
+    def setUp(self):
+        _ensured_indexes.clear()
+
+    async def test_inherits_base_search_service(self):
+        with patch("app.services.base_search_service.get_es_client", return_value=FakeES()):
+            with patch("app.services.cross_search_service.get_enabled_search_module_configs", return_value={}):
+                service = CrossSearchService(AsyncMock())
+        self.assertIsInstance(service, BaseSearchService)
+
+    async def test_ensure_index_uses_cache(self):
+        _ensured_indexes.add("charwork_global_search")
+        fake_es = FakeES()
+        with patch("app.services.base_search_service.get_es_client", return_value=fake_es):
+            with patch("app.services.cross_search_service.get_enabled_search_module_configs", return_value={}):
+                service = CrossSearchService(AsyncMock())
+                await service.ensure_index()
+        self.assertEqual(len(fake_es.indices.created), 0)
