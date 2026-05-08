@@ -3,27 +3,17 @@
 特殊逻辑：通知目标按“全局/课程/仅未提交”三层边界过滤，附件 file_key 兼容对象与字典输入，支持动态来源数据。
 """
 
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assignment import AssignmentStatus
-from app.models.course import Course
-from app.models.message import Message
-from app.models.student import Student
-from app.models.submission import Submission
-from app.models.teaching_class import TeachingClassMember, TeachingClassMemberStatus
-from app.models.user import User, UserRole
 from app.repositories.assignment_repo import AssignmentRepository
 from app.repositories.course_repo import CourseRepository
 from app.schemas.assignment import (
     AssignmentActionResponse,
-    AssignmentAttachment,
     AssignmentCreate,
-    AssignmentInstructionStep,
     AssignmentDelayRequest,
     AssignmentUpdate,
     AssignmentResponse,
@@ -415,8 +405,6 @@ class AssignmentService:
             action="remind",
             affected_students=affected,
         )
-
-
 
     async def _resolve_assignment_filters(
         self,

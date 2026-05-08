@@ -36,7 +36,7 @@ class ManagementSystem(Base):
         back_populates="management_system",
         cascade="all, delete-orphan",
     )
-    records: Mapped[list["ManagementSystemRecord"]] = relationship(
+    records: Mapped[list["ManagementSystemRecord"]] = relationship(  # noqa
         "ManagementSystemRecord",
         cascade="all, delete-orphan",
     )

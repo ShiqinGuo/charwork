@@ -6,7 +6,7 @@
 """
 
 from typing import Optional
-from sqlalchemy import String, Integer, DateTime, func, ForeignKey, Index
+from sqlalchemy import String, Integer, DateTime, func, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base

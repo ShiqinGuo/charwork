@@ -1,6 +1,5 @@
 import os
 import tempfile
-from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -260,7 +259,7 @@ async def export_management_system_records(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return Response(
+    return StreamingResponse(
         content=buffer.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=export_{id}.xlsx"},

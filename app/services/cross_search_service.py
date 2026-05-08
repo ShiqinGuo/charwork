@@ -32,6 +32,8 @@ _TEACHER_PERMISSION_CHECK: dict[str, callable] = {
 }
 
 # 学生权限判断：额外传入 course_ids, class_ids, current_user_id
+
+
 def _student_permission_check(source: dict, user_id: str, course_ids: set, class_ids: set) -> bool:
     module = str(source.get("module") or "")
     if module == "student":
@@ -215,7 +217,8 @@ class CrossSearchService(BaseSearchService):
             },
         )
         hits = response.get("hits", {}).get("hits", [])
-        return [{"module": h["_source"]["module"], "id": h["_source"]["source_id"], "title": h["_source"]["title"]} for h in hits]
+        return [{"module": h["_source"]["module"], "id": h["_source"]
+                 ["source_id"], "title": h["_source"]["title"]} for h in hits]
 
     async def _filter_hits_by_permissions(
         self,

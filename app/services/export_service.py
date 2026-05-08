@@ -230,7 +230,8 @@ class ExportService:
         filename = f"assignments_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
         filepath = os.path.join(self.output_dir, filename)
         df.to_excel(filepath, index=False)
-        return {"file_name": filename, "file_path": filepath, "file_url": f"/media/export_results/{filename}", "total": len(rows)}
+        return {"file_name": filename, "file_path": filepath,
+                "file_url": f"/media/export_results/{filename}", "total": len(rows)}
 
     async def export_students(
         self, teacher_id: str, course_id: str | None = None,
@@ -260,7 +261,8 @@ class ExportService:
         filename = f"students_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
         filepath = os.path.join(self.output_dir, filename)
         df.to_excel(filepath, index=False)
-        return {"file_name": filename, "file_path": filepath, "file_url": f"/media/export_results/{filename}", "total": len(rows)}
+        return {"file_name": filename, "file_path": filepath,
+                "file_url": f"/media/export_results/{filename}", "total": len(rows)}
 
     async def export_submissions(
         self, assignment_id: str, student_id: str | None = None,
@@ -290,4 +292,5 @@ class ExportService:
         filename = f"submissions_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
         filepath = os.path.join(self.output_dir, filename)
         df.to_excel(filepath, index=False)
-        return {"file_name": filename, "file_path": filepath, "file_url": f"/media/export_results/{filename}", "total": len(rows)}
+        return {"file_name": filename, "file_path": filepath,
+                "file_url": f"/media/export_results/{filename}", "total": len(rows)}

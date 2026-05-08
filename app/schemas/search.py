@@ -26,7 +26,6 @@ class ReindexResponse(BaseModel):
     failed: int = 0
 
 
-
 @dataclass
 class PermissionContext:
     """搜索权限上下文，路由层预查询后传入 service。"""

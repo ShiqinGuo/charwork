@@ -594,9 +594,9 @@ class SubmissionService:
 
     async def batch_grade(
         self,
-        body: "BatchGradeRequest",
+        body: "BatchGradeRequest",  # noqa
         sender_user_id: str,
-    ) -> "BatchGradeResponse":
+    ) -> "BatchGradeResponse":  # noqa
         """批量批改，部分成功模式。"""
         from app.schemas.submission import (
             BatchGradeResponse,

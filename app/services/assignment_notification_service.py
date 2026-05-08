@@ -3,7 +3,6 @@
 """
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,7 +67,6 @@ class AssignmentNotificationService:
         )
 
     def _build_reminder_notification(self, assignment, body) -> AssignmentNotificationPayload:
-        from app.schemas.assignment import AssignmentReminderRequest
         return AssignmentNotificationPayload(
             title=body.title or DEFAULT_REMINDER_TITLE,
             content=body.content or REMINDER_NOTIFICATION_TEMPLATE.format(
@@ -122,7 +120,8 @@ class AssignmentNotificationService:
         )
         return [self._build_target(row) for row in result.all()]
 
-    async def _list_course_student_targets(self, course_id: str, sender_user_id: str) -> list[AssignmentNotificationTarget]:
+    async def _list_course_student_targets(
+            self, course_id: str, sender_user_id: str) -> list[AssignmentNotificationTarget]:
         result = await self.db.execute(
             select(Student.id, Student.user_id)
             .join(TeachingClassMember, TeachingClassMember.student_id == Student.id)
@@ -141,7 +140,8 @@ class AssignmentNotificationService:
         return {row[0] for row in result.all()}
 
     @staticmethod
-    def _filter_pending_targets(targets: list[AssignmentNotificationTarget], submitted_ids: set[str]) -> list[AssignmentNotificationTarget]:
+    def _filter_pending_targets(targets: list[AssignmentNotificationTarget],
+                                submitted_ids: set[str]) -> list[AssignmentNotificationTarget]:
         return [t for t in targets if t.student_id not in submitted_ids]
 
     @staticmethod

@@ -57,12 +57,12 @@ class User(Base):
 
     # 评论关系
     comments: Mapped[list["Comment"]] = relationship("Comment", back_populates="user")
-    management_system_links: Mapped[list["UserManagementSystem"]] = relationship(
+    management_system_links: Mapped[list["UserManagementSystem"]] = relationship(  # noqa
         "UserManagementSystem",
         back_populates="user",
         cascade="all, delete-orphan",
     )
-    owned_management_systems: Mapped[list["ManagementSystem"]] = relationship(
+    owned_management_systems: Mapped[list["ManagementSystem"]] = relationship(  # noqa
         "ManagementSystem",
         back_populates="owner_user",
         foreign_keys="ManagementSystem.owner_user_id",

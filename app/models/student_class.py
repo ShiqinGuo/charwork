@@ -1,5 +1,4 @@
 from enum import Enum as PyEnum
-from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship

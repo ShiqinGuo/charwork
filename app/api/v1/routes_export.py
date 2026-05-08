@@ -79,7 +79,11 @@ async def export_assignments(
     result = await ExportService(db).export_assignments(
         teacher_id=current_teacher.id, course_id=course_id, status=status,
     )
-    return FileResponse(result["file_path"], media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename="assignments.xlsx")
+    return FileResponse(
+        result["file_path"],
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="assignments.xlsx"
+        )
 
 
 @router.get("/students")
@@ -93,7 +97,11 @@ async def export_students(
     result = await ExportService(db).export_students(
         teacher_id=current_teacher.id, course_id=course_id, class_id=class_id,
     )
-    return FileResponse(result["file_path"], media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename="students.xlsx")
+    return FileResponse(
+        result["file_path"],
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="students.xlsx"
+        )
 
 
 @router.get("/submissions")
@@ -108,4 +116,8 @@ async def export_submissions(
     result = await ExportService(db).export_submissions(
         assignment_id=assignment_id, student_id=student_id, status=status,
     )
-    return FileResponse(result["file_path"], media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", filename="submissions.xlsx")
+    return FileResponse(
+        result["file_path"],
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="submissions.xlsx"
+        )
