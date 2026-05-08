@@ -14,7 +14,7 @@ from app.models.user import UserRole
 from app.repositories.course_repo import CourseRepository
 from app.repositories.student_repo import StudentRepository
 from app.repositories.teaching_class_repo import TeachingClassRepository
-from app.schemas.search import CrossSearchResponse, SearchHit, ReindexResponse
+from app.schemas.search import CrossSearchResponse, PermissionContext, SearchHit, ReindexResponse
 from app.services.base_search_service import BaseSearchService
 from app.services.search_registry import SearchDocument, get_enabled_search_module_configs
 
@@ -237,6 +237,34 @@ class CrossSearchService(BaseSearchService):
                 if created_by_user_id in {None, "", teacher_user_id}:
                     filtered_hits.append(hit)
         return filtered_hits
+
+    @staticmethod
+    def _build_permission_filter(ctx: "PermissionContext") -> list[dict]:
+        """根据用户角色构建 ES 权限 filter 子句。"""
+        if ctx.role == "admin":
+            return []
+
+        should: list[dict] = []
+
+        if ctx.role == "teacher":
+            # teacher_user_id 直接匹配：assignment / course / teaching_class / discussion
+            should.append({"term": {"teacher_user_id": ctx.user_id}})
+            # student 模块：teacher_user_ids 包含当前教师
+            should.append({"term": {"teacher_user_ids": ctx.user_id}})
+            # hanzi 模块：created_by_user_id 为空或为本人
+            should.append({"bool": {"must_not": {"exists": {"field": "created_by_user_id"}}}})
+            should.append({"term": {"created_by_user_id": ctx.user_id}})
+        elif ctx.role == "student":
+            if ctx.course_ids:
+                should.append({"terms": {"course_id": ctx.course_ids}})
+            if ctx.student_user_id:
+                should.append({"term": {"student_user_id": ctx.student_user_id}})
+            # hanzi 模块：created_by_user_id 为空（公共汉字）
+            should.append({"bool": {"must_not": {"exists": {"field": "created_by_user_id"}}}})
+
+        if not should:
+            return [{"match_none": {}}]
+        return [{"bool": {"should": should, "minimum_should_match": 1}}]
 
     def _normalize_requested_modules(self, modules: Optional[list[str]]) -> list[str] | None:
         available_modules = {config.module for config in self.module_configs.values()}
