@@ -1,6 +1,6 @@
 from typing import Optional, List
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 from app.schemas.attachment import AttachmentResponse
 
@@ -57,3 +57,24 @@ class SubmissionListResponse(BaseModel):
     skip: Optional[int] = None
     limit: Optional[int] = None
     has_more: Optional[bool] = None
+
+
+class BatchGradeItem(BaseModel):
+    submission_id: str = Field(..., description="提交记录ID")
+    score: int = Field(..., ge=0, le=100, description="分数 0-100")
+    feedback: str | None = Field(None, description="教师评语")
+
+
+class BatchGradeRequest(BaseModel):
+    grades: list[BatchGradeItem] = Field(..., min_length=1, max_length=100, description="批量批改列表，最多100条")
+
+
+class BatchGradeFailedItem(BaseModel):
+    submission_id: str
+    error: str
+
+
+class BatchGradeResponse(BaseModel):
+    total: int = Field(..., description="请求总数")
+    success: int = Field(..., description="成功数量")
+    failed: list[BatchGradeFailedItem] = Field(default_factory=list, description="失败明细")
