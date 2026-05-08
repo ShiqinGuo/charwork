@@ -12,7 +12,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.es_client import get_es_client
 from app.models.hanzi_dictionary import HanziDictionary
 from app.schemas.search import ReindexResponse
 from app.services.base_search_service import BaseSearchService
