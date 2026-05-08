@@ -94,10 +94,7 @@ class StreamContext:
     tool_calls_record: list[dict[str, Any]] = field(default_factory=list)
     round: int = 0
     next_phase: StreamPhase = StreamPhase.THINKING
-    # THINKING 阶段收集的原始结果
     thinking_content: str = ""
-    thinking_reasoning: str = ""
-    thinking_finish_reason: str | None = None
     thinking_tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -136,42 +133,6 @@ class AIChatService:
         if handler is None:
             return {"error": f"未知工具: {name}"}
         return await handler(args, teacher_user_id)
-
-    # ---- 流式收集 ----
-
-    @staticmethod
-    async def _collect_stream_chunk(stream) -> dict[str, Any]:
-        """收集一轮 LLM 流式响应。返回 {finish_reason, content, thinking, tool_calls}。"""
-        content = ""
-        thinking = ""
-        tool_calls: list[dict[str, Any]] = []
-        finish_reason = None
-
-        async for chunk in stream:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            finish_reason = chunk.choices[0].finish_reason
-            reasoning = getattr(delta, "reasoning_content", None)
-            if reasoning:
-                thinking += str(reasoning)
-            if delta.content:
-                content += delta.content
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    if tc.id:
-                        tool_calls.append({"id": tc.id, "name": "", "args": ""})
-                    if tc.function:
-                        if tc.function.name and tool_calls:
-                            tool_calls[-1]["name"] = tc.function.name
-                        if tc.function.arguments and tool_calls:
-                            tool_calls[-1]["args"] += tc.function.arguments
-        return {
-            "finish_reason": finish_reason,
-            "content": content,
-            "thinking": thinking,
-            "tool_calls": tool_calls,
-        }
 
     # ---- 状态机 ----
 
@@ -229,7 +190,7 @@ class AIChatService:
     # ---- Phase handlers ----
 
     async def _handle_thinking(self, ctx: StreamContext, teacher_user_id: str) -> AsyncIterator[str]:
-        """THINKING: LLM + tools 流式调用，收集响应。"""
+        """THINKING: LLM + tools 流式调用，实时输出内容，同时收集工具调用。"""
         ctx.round += 1
         yield self._to_sse(AIChatStreamEvent(event="status", data={
             "phase": "analysis", "message": "正在分析问题",
@@ -246,36 +207,58 @@ class AIChatService:
             ctx.next_phase = StreamPhase.DONE
             return
 
-        result = await self._collect_stream_chunk(stream)
+        # 流式输出 + 收集
+        content = ""
+        tool_calls: list[dict[str, Any]] = []
+        finish_reason = None
 
-        # 流式输出思考过程
-        if result["thinking"]:
-            yield self._to_sse(AIChatStreamEvent(event="thinking_chunk", data={"content": result["thinking"]}))
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            finish_reason = chunk.choices[0].finish_reason
 
-        ctx.thinking_content = result["content"]
-        ctx.thinking_finish_reason = result["finish_reason"]
-        ctx.thinking_tool_calls = result["tool_calls"]
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                yield self._to_sse(AIChatStreamEvent(event="thinking_chunk", data={"content": str(reasoning)}))
 
-        has_tool_calls = result["finish_reason"] == "tool_calls" and result["tool_calls"]
-        if has_tool_calls and ctx.round < MAX_TOOL_ROUNDS:
-            # 保存 assistant 消息（含 tool_calls）
+            if delta.content:
+                content += delta.content
+                yield self._to_sse(AIChatStreamEvent(event="message_chunk", data={"content": delta.content}))
+
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    if tc.id:
+                        tool_calls.append({"id": tc.id, "name": "", "args": ""})
+                    if tc.function:
+                        if tc.function.name and tool_calls:
+                            tool_calls[-1]["name"] = tc.function.name
+                        if tc.function.arguments and tool_calls:
+                            tool_calls[-1]["args"] += tc.function.arguments
+
+        has_tool = finish_reason == "tool_calls" and tool_calls
+
+        if has_tool and ctx.round < MAX_TOOL_ROUNDS:
             ctx.messages.append({
                 "role": "assistant",
-                "content": result["content"] or None,
+                "content": content or None,
                 "tool_calls": [
                     {"id": tc["id"], "type": "function", "function": {"name": tc["name"], "arguments": tc["args"]}}
-                    for tc in result["tool_calls"]
+                    for tc in tool_calls
                 ],
             })
+            ctx.thinking_tool_calls = tool_calls
             ctx.next_phase = StreamPhase.TOOL_CALLING
-        else:
-            if ctx.round >= MAX_TOOL_ROUNDS and has_tool_calls:
-                yield self._to_sse(AIChatStreamEvent(event="status", data={
-                    "phase": "answer", "message": f"已达到最大工具调用轮次（{MAX_TOOL_ROUNDS}），开始生成回答",
-                }))
-            if result["content"]:
-                ctx.messages.append({"role": "assistant", "content": result["content"]})
+        elif has_tool and ctx.round >= MAX_TOOL_ROUNDS:
+            yield self._to_sse(AIChatStreamEvent(event="status", data={
+                "phase": "answer", "message": f"已达到最大工具调用轮次（{MAX_TOOL_ROUNDS}），开始生成回答",
+            }))
             ctx.next_phase = StreamPhase.ANSWERING
+        else:
+            # finish=stop: 内容已流式输出给用户，直接完成
+            ctx.thinking_content = self._normalize_message_content(content)
+            ctx.messages.append({"role": "assistant", "content": content})
+            ctx.next_phase = StreamPhase.DONE
 
     async def _handle_tool_calling(self, ctx: StreamContext, teacher_user_id: str) -> AsyncIterator[str]:
         """TOOL_CALLING: 执行本轮所有工具调用。"""
@@ -297,7 +280,7 @@ class AIChatService:
         ctx.next_phase = StreamPhase.THINKING
 
     async def _handle_answering(self, ctx: StreamContext, teacher_user_id: str) -> AsyncIterator[str]:
-        """ANSWERING: 不带工具 LLM 调用，流式输出最终回答。"""
+        """ANSWERING: 工具轮次耗尽后的最终无工具 LLM 调用，流式输出。"""
         yield self._to_sse(AIChatStreamEvent(event="status", data={
             "phase": "answer", "message": "正在生成回复",
         }))
@@ -312,11 +295,15 @@ class AIChatService:
             ctx.thinking_content = err
             ctx.next_phase = StreamPhase.DONE
             return
-        collector = _StreamCollector(stream)
-        async for sse in collector:
-            if sse:
-                yield sse
-        ctx.thinking_content = self._normalize_message_content(collector.collected_text)
+        content = ""
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                content += delta.content
+                yield self._to_sse(AIChatStreamEvent(event="message_chunk", data={"content": delta.content}))
+        ctx.thinking_content = self._normalize_message_content(content)
         ctx.next_phase = StreamPhase.DONE
 
     _PHASE_HANDLERS: dict[StreamPhase, Callable] = {
@@ -596,34 +583,3 @@ class AIChatService:
     @staticmethod
     def _short_memory_cache_key(conversation_id: str) -> str:
         return f"ai_chat:short_memory:{conversation_id}"
-
-
-class _StreamCollector:
-    """包装 AsyncStream，迭代时产出 SSE message_chunk 事件，同时收集完整文本。"""
-
-    def __init__(self, stream: Any) -> None:
-        self._stream = stream
-        self.collected_text: str = ""
-
-    def __aiter__(self) -> "_StreamCollector":
-        return self
-
-    async def __anext__(self) -> str:
-        try:
-            chunk = await self._stream.__anext__()
-        except StopAsyncIteration:
-            raise
-        delta = chunk.choices[0].delta if chunk.choices else None
-        if not delta:
-            return ""
-        payload = ""
-        reasoning_content = getattr(delta, "reasoning_content", None)
-        if reasoning_content:
-            event = AIChatStreamEvent(event="thinking_chunk", data={"content": str(reasoning_content)})
-            payload += AIChatService._to_sse(event)
-        if delta.content:
-            text = delta.content
-            self.collected_text += text
-            event = AIChatStreamEvent(event="message_chunk", data={"content": text})
-            payload += AIChatService._to_sse(event)
-        return payload
