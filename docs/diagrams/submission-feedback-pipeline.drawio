@@ -1,0 +1,132 @@
+<mxGraphModel adaptiveColors="auto">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="2" value="提交 → 批改 → 反馈链路（泳道图）" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="180" y="10" width="340" height="35" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="3" value="学生" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="20" y="60" width="680" height="30" as="geometry"/>
+    </mxCell>
+    <mxCell id="4" value="查看已发布作业" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="40" y="105" width="120" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="5" value="上传书写附件&#xa;（拍照/相册）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="240" y="105" width="130" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="6" value="点击提交" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="450" y="105" width="100" height="45" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="7" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="160" y="127" as="sourcePoint"/>
+        <mxPoint x="240" y="127" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="8" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="370" y="127" as="sourcePoint"/>
+        <mxPoint x="450" y="127" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+
+    <mxCell id="9" value="教师" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="20" y="175" width="680" height="30" as="geometry"/>
+    </mxCell>
+    <mxCell id="10" value="查看提交列表" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="40" y="220" width="120" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="11" value="触发 AI 批改" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="240" y="220" width="130" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="12" value="查看/修改批改" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="450" y="220" width="120" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="13" value="发布反馈给学生" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="610" y="220" width="80" height="45" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="14" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="160" y="242" as="sourcePoint"/>
+        <mxPoint x="240" y="242" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="15" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#d79b00;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="370" y="242" as="sourcePoint"/>
+        <mxPoint x="450" y="242" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="16" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="570" y="242" as="sourcePoint"/>
+        <mxPoint x="610" y="242" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+
+    <mxCell id="17" value="AI 系统" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="20" y="290" width="680" height="30" as="geometry"/>
+    </mxCell>
+    <mxCell id="18" value="接收批改请求" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="40" y="335" width="120" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="19" value="分析书写字形笔画" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="240" y="335" width="130" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="20" value="生成评价反馈" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="450" y="335" width="120" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="21" value="返回批改结果" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="610" y="335" width="80" height="45" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="22" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="160" y="357" as="sourcePoint"/>
+        <mxPoint x="240" y="357" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="23" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#9673a6;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="370" y="357" as="sourcePoint"/>
+        <mxPoint x="450" y="357" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="24" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="570" y="357" as="sourcePoint"/>
+        <mxPoint x="610" y="357" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+
+    <mxCell id="25" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#666666;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="550" y="150" as="sourcePoint"/>
+        <mxPoint x="305" y="220" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="26" value="POST /api/v1/submissions" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#f5f5f5;" vertex="1" connectable="0" parent="25">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="27" value="" style="endArrow=classic;html=1;strokeWidth=2;strokeColor=#666666;dashed=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="305" y="265" as="sourcePoint"/>
+        <mxPoint x="305" y="335" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="28" value="Celery 异步调用 AI" style="edgeLabel;html=1;align=center;verticalAlign=middle;fontSize=10;fillColor=#f5f5f5;" vertex="1" connectable="0" parent="27">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="29" value="查看反馈 → 评论互动" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="240" y="410" width="220" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="30" value="学生" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="195" y="415" width="40" height="20" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>
