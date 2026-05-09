@@ -1,0 +1,93 @@
+<mxGraphModel adaptiveColors="auto">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+    <mxCell id="2" value="CharWork 权限模型" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="250" y="10" width="300" height="40" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="3" value="第一层：角色控制 (RBAC)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=2;" vertex="1" parent="1">
+      <mxGeometry x="40" y="70" width="200" height="30" as="geometry"/>
+    </mxCell>
+    <mxCell id="4" value="决定：谁能做什么操作" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="40" y="100" width="200" height="20" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="5" value="Teacher" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="40" y="130" width="140" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="6" value="Student" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="330" y="130" width="140" height="45" as="geometry"/>
+    </mxCell>
+    <mxCell id="7" value="Admin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="620" y="130" width="140" height="45" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="8" value="管理课程/班级/作业/学生&#xa;批改提交，导入导出" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;align=center;" vertex="1" parent="1">
+      <mxGeometry x="40" y="185" width="140" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="9" value="查看作业，提交书写&#xa;查看反馈，评论" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;align=center;" vertex="1" parent="1">
+      <mxGeometry x="330" y="185" width="140" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="10" value="用户管理&#xa;日志审计" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;align=center;" vertex="1" parent="1">
+      <mxGeometry x="620" y="185" width="140" height="40" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="11" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#333333;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="400" y="240" as="sourcePoint"/>
+        <mxPoint x="400" y="285" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="12" value="路由层依赖注入 get_current_teacher / get_current_student / get_current_admin&#xa;(app/core/auth.py)" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fillColor=#f5f5f5;" vertex="1" connectable="0" parent="11">
+      <mxGeometry x="-0.2" relative="1" as="geometry">
+        <mxPoint as="offset"/>
+      </mxGeometry>
+    </mxCell>
+
+    <mxCell id="13" value="第二层：数据可见性（业务归属）" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=2;" vertex="1" parent="1">
+      <mxGeometry x="40" y="300" width="300" height="30" as="geometry"/>
+    </mxCell>
+    <mxCell id="14" value="决定：谁看得见什么数据" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="40" y="330" width="200" height="20" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="15" value="Teacher → 自己的课程/作业/学生" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="40" y="360" width="230" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="16" value="Student → 自己的提交/所在课程作业" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="290" y="360" width="230" height="40" as="geometry"/>
+    </mxCell>
+    <mxCell id="17" value="Admin → 全部数据" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="540" y="360" width="230" height="40" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="18" value="ES 召回 → PermissionContext 按角色二次过滤&#xa;(app/services/cross_search_service.py)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#cccccc;fontSize=11;align=center;" vertex="1" parent="1">
+      <mxGeometry x="220" y="415" width="360" height="35" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="19" value="" style="endArrow=classic;html=1;strokeWidth=3;strokeColor=#333333;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="400" y="465" as="sourcePoint"/>
+        <mxPoint x="400" y="510" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+
+    <mxCell id="20" value="第三层：管理体系（辅助扩展）" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=2;" vertex="1" parent="1">
+      <mxGeometry x="40" y="525" width="300" height="30" as="geometry"/>
+    </mxCell>
+    <mxCell id="21" value="自定义字段模板 + 记录分组，非全局多租户容器" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;fontColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="40" y="555" width="350" height="20" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="22" value="每个用户自动拥有默认体系&#xa;（汉字书写模板）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="40" y="585" width="200" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="23" value="教师可创建自定义体系&#xa;定义字段模板" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="290" y="585" width="200" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="24" value="不影响核心业务实体&#xa;（课程/作业/学生）权限隔离" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=12;dashed=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="540" y="585" width="230" height="50" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>
