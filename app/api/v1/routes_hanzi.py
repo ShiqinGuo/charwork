@@ -325,6 +325,9 @@ async def list_hanzi_dataset_items(
     limit: Optional[int] = Query(None, ge=1, le=100),
     page: Optional[int] = Query(None, ge=1),
     size: Optional[int] = Query(None, ge=1, le=100),
+    character: Optional[str] = Query(None),
+    pinyin: Optional[str] = Query(None),
+    stroke_pattern: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -337,6 +340,9 @@ async def list_hanzi_dataset_items(
             limit=pagination["limit"],
             page=pagination["page"],
             size=pagination["size"],
+            character=character,
+            pinyin=pinyin,
+            stroke_pattern=stroke_pattern,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

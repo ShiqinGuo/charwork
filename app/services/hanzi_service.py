@@ -373,7 +373,7 @@ class HanziService:
             stroke_units=split_stroke_pattern(item.stroke_pattern),
             pinyin=item.pinyin,
             source=item.source,
-            level=item.level,
+            level=item.level or "D",
             comment=item.comment,
             variant=item.variant,
             standard_image=item.standard_image,

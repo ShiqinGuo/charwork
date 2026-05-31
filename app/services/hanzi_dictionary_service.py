@@ -269,6 +269,9 @@ class HanziDictionaryService:
         limit: int,
         page: Optional[int] = None,
         size: Optional[int] = None,
+        character: Optional[str] = None,
+        pinyin: Optional[str] = None,
+        stroke_pattern: Optional[str] = None,
     ) -> DatasetHanziRelationsListResponse:
         await self._get_dataset_entity(dataset_id, current_user_id)
         items = await self.dataset_repo.list_items(
@@ -276,8 +279,14 @@ class HanziDictionaryService:
             created_by_user_id=current_user_id,
             skip=skip,
             limit=limit,
+            character=character,
+            pinyin=pinyin,
+            stroke_pattern=stroke_pattern,
         )
-        total = await self.dataset_repo.count_items_in_scope(dataset_id, current_user_id)
+        total = await self.dataset_repo.count_items_in_scope(
+            dataset_id, current_user_id,
+            character=character, pinyin=pinyin, stroke_pattern=stroke_pattern,
+        )
         payload = build_paged_response(
             items=[self._to_hanzi_response(item) for item in items],
             total=total,

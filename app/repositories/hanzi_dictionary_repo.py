@@ -395,8 +395,11 @@ class HanziDatasetRepository:
         created_by_user_id: str,
         skip: int,
         limit: int,
+        character: Optional[str] = None,
+        pinyin: Optional[str] = None,
+        stroke_pattern: Optional[str] = None,
     ) -> list[Hanzi]:
-        result = await self.db.execute(
+        query = (
             select(Hanzi)
             .join(DatasetHanziRelation, DatasetHanziRelation.hanzi_id == Hanzi.id)
             .join(HanziDataset, HanziDataset.id == DatasetHanziRelation.dataset_id)
@@ -408,14 +411,25 @@ class HanziDatasetRepository:
                     Hanzi.created_by_user_id.is_(None),
                 ),
             )
-            .order_by(Hanzi.updated_at.desc())
-            .offset(skip)
-            .limit(limit)
+        )
+        if character:
+            query = query.where(Hanzi.character == character)
+        if pinyin:
+            query = query.where(Hanzi.pinyin.contains(pinyin))
+        if stroke_pattern:
+            query = query.where(Hanzi.stroke_pattern.contains(stroke_pattern))
+        result = await self.db.execute(
+            query.order_by(Hanzi.updated_at.desc()).offset(skip).limit(limit)
         )
         return result.scalars().all()
 
-    async def count_items_in_scope(self, dataset_id: str, created_by_user_id: str) -> int:
-        result = await self.db.execute(
+    async def count_items_in_scope(
+        self, dataset_id: str, created_by_user_id: str,
+        character: Optional[str] = None,
+        pinyin: Optional[str] = None,
+        stroke_pattern: Optional[str] = None,
+    ) -> int:
+        query = (
             select(func.count())
             .select_from(DatasetHanziRelation)
             .join(Hanzi, Hanzi.id == DatasetHanziRelation.hanzi_id)
@@ -429,6 +443,13 @@ class HanziDatasetRepository:
                 ),
             )
         )
+        if character:
+            query = query.where(Hanzi.character == character)
+        if pinyin:
+            query = query.where(Hanzi.pinyin.contains(pinyin))
+        if stroke_pattern:
+            query = query.where(Hanzi.stroke_pattern.contains(stroke_pattern))
+        result = await self.db.execute(query)
         return int(result.scalar() or 0)
 
     async def create(self, dataset: HanziDataset) -> HanziDataset:
