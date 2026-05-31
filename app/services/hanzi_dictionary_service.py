@@ -20,7 +20,7 @@ from app.schemas.hanzi_dictionary import (
     HanziDatasetCreate,
     HanziDatasetCreateHanziResponse,
     HanziDatasetDetailResponse,
-    HanziDatasetItemsListResponse,
+    DatasetHanziRelationsListResponse,
     HanziDatasetListResponse,
     HanziDatasetResponse,
     HanziDictionaryListResponse,
@@ -269,7 +269,7 @@ class HanziDictionaryService:
         limit: int,
         page: Optional[int] = None,
         size: Optional[int] = None,
-    ) -> HanziDatasetItemsListResponse:
+    ) -> DatasetHanziRelationsListResponse:
         await self._get_dataset_entity(dataset_id, current_user_id)
         items = await self.dataset_repo.list_items(
             dataset_id=dataset_id,
@@ -283,7 +283,7 @@ class HanziDictionaryService:
             total=total,
             pagination={"page": page, "size": size, "skip": skip, "limit": limit},
         )
-        return HanziDatasetItemsListResponse(**payload)
+        return DatasetHanziRelationsListResponse(**payload)
 
     async def append_dataset_items(
         self,

@@ -31,7 +31,7 @@ class SubmissionRepository:
         返回值：
             Optional[Submission]: 返回处理结果对象；无可用结果时返回 None。
         """
-        query = select(Submission).where(Submission.id == id).options(joinedload(Submission.attachments))
+        query = select(Submission).where(Submission.id == id).options(joinedload(Submission.student), joinedload(Submission.attachments))
         result = await self.db.execute(query)
         return result.scalars().first()
 
@@ -58,7 +58,7 @@ class SubmissionRepository:
         query = select(Submission).where(Submission.assignment_id == assignment_id)
         if student_id:
             query = query.where(Submission.student_id == student_id)
-        query = query.options(joinedload(Submission.attachments))
+        query = query.options(joinedload(Submission.student), joinedload(Submission.attachments))
         result = await self.db.execute(
             query.order_by(desc(Submission.submitted_at)).offset(skip).limit(limit)
         )
@@ -106,7 +106,7 @@ class SubmissionRepository:
         query = select(Submission).where(
             Submission.assignment_id == assignment_id,
             Submission.student_id == student_id,
-        ).options(joinedload(Submission.attachments))
+        ).options(joinedload(Submission.student), joinedload(Submission.attachments))
         result = await self.db.execute(
             query.order_by(desc(Submission.submitted_at), desc(Submission.id)).limit(1)
         )

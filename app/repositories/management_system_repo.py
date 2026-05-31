@@ -161,7 +161,7 @@ class ManagementSystemRepository:
         return result.scalars().first()
 
     async def list_user_ids_missing_default(self, preset_key: str) -> list[str]:
-        # 使用相关子查询直接在数据库侧找“缺默认系统”用户，避免全量拉取后在应用层二次比对。
+        # 使用相关子查询直接在数据库侧找"缺默认系统"用户，避免全量拉取后在应用层二次比对。
         """
         功能描述：
             按条件查询用户标识列表missing默认列表。

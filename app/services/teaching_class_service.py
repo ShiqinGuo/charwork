@@ -1,5 +1,5 @@
 """
-为什么这样做：教学班服务把“班级、成员、扫码入班”收敛在一个事务边界内，保证加入动作与权限链接一致。
+为什么这样做：教学班服务把"班级、成员、扫码入班"收敛在一个事务边界内，保证加入动作与权限链接一致。
 特殊逻辑：令牌状态按过期/次数/禁用顺序判定，先处理边界态再执行入班，避免重复或越权加入。
 """
 
@@ -210,7 +210,7 @@ class TeachingClassService:
         existing_member = await self.repo.get_member(token_item.teaching_class_id, current_student_id)
         courses = await self.course_repo.list_by_teaching_class(token_item.teaching_class_id)
         token_status = self._resolve_token_status(token_item)
-        # 预览接口同时返回“能否加入”和“为何不能加入”的组合信息，前端据此决定展示加入按钮还是状态提示。
+        # 预览接口同时返回"能否加入"和"为何不能加入"的组合信息，前端据此决定展示加入按钮还是状态提示。
         can_join = token_status == TeachingClassJoinTokenStatus.ACTIVE and existing_member is None
         if teaching_class is None:
             raise ValueError("教学班级不存在")

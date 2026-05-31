@@ -36,7 +36,7 @@ class CustomFieldRepository:
         """
         query = select(ManagementSystemCustomField).where(ManagementSystemCustomField.id == id)
         if management_system_id:
-            # 读取单字段时可选追加系统边界，供上层在“全局 ID”与“系统内 ID”两种场景复用同一查询入口。
+            # 读取单字段时可选追加系统边界，供上层在"全局 ID"与"系统内 ID"两种场景复用同一查询入口。
             query = query.where(ManagementSystemCustomField.management_system_id == management_system_id)
         result = await self.db.execute(query)
         return result.scalars().first()
@@ -225,7 +225,7 @@ class CustomFieldRepository:
                 ManagementSystemCustomFieldValue.target_type == target_type,
                 ManagementSystemCustomFieldValue.target_id.in_(target_ids),
             )
-            # 批量值查询按 target_id 分组输出，便于上层一次遍历构建“目标 -> 字段值列表”映射。
+            # 批量值查询按 target_id 分组输出，便于上层一次遍历构建"目标 -> 字段值列表"映射。
             .options(selectinload(ManagementSystemCustomFieldValue.field))
             .order_by(
                 ManagementSystemCustomFieldValue.target_id.asc(),

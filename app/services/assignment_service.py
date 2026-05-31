@@ -1,6 +1,6 @@
 """
 为什么这样做：作业服务聚合状态机、通知、附件与字段值写入，确保一次业务动作后的数据一致性。
-特殊逻辑：通知目标按“全局/课程/仅未提交”三层边界过滤，附件 file_key 兼容对象与字典输入，支持动态来源数据。
+特殊逻辑：通知目标按"全局/课程/仅未提交"三层边界过滤，附件 file_key 兼容对象与字典输入，支持动态来源数据。
 """
 
 from datetime import datetime
@@ -145,7 +145,7 @@ class AssignmentService:
         """
         # 发布前必须先把课程关系解析成当前教师可维护的合法课程，避免作业落到越权课程上。
         course_id = await self._resolve_course_id(assignment_in.course_id, teacher_id)
-        # 作业与步骤中的附件在入库前先校验上传记录，避免保存后再出现“附件不存在”的脏数据。
+        # 作业与步骤中的附件在入库前先校验上传记录，避免保存后再出现"附件不存在"的脏数据。
         await self._ensure_attachment_uploads_exist(
             attachments=assignment_in.attachments,
             instruction_steps=assignment_in.instruction_steps,
@@ -195,7 +195,7 @@ class AssignmentService:
                     )
                 }
             )
-        # 更新接口支持局部字段变更，因此附件与步骤需要基于“新值优先、旧值兜底”的规则计算最终状态。
+        # 更新接口支持局部字段变更，因此附件与步骤需要基于"新值优先、旧值兜底"的规则计算最终状态。
         next_attachments = (
             assignment_in.attachments
             if assignment_in.attachments is not None

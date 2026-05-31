@@ -75,7 +75,7 @@ class ManagementSystemCustomFieldValueItem(BaseModel):
 
 
 class ManagementSystemCustomFieldValueUpsertRequest(BaseModel):
-    # 默认空列表使“清空自定义值”与“部分更新”共用同一提交结构，减少接口分叉。
+    # 默认空列表使"清空自定义值"与"部分更新"共用同一提交结构，减少接口分叉。
     values: list[ManagementSystemCustomFieldValueItem] = Field(default_factory=list)
 
 

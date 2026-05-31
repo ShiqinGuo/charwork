@@ -61,7 +61,7 @@ class AssignmentRepository:
             query = query.where(Assignment.course_id == course_id)
         elif course_ids is not None:
             if not course_ids:
-                # 传入空课程集合时直接返回空结果，避免退化为“仅按其他条件”导致范围意外放大。
+                # 传入空课程集合时直接返回空结果，避免退化为"仅按其他条件"导致范围意外放大。
                 return []
             query = query.where(Assignment.course_id.in_(course_ids))
 

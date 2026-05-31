@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_admin, get_current_user, get_current_teacher
 from app.core.database import get_db
@@ -20,7 +20,7 @@ from app.schemas.hanzi_dictionary import (
     HanziDatasetCreateHanziRequest,
     HanziDatasetCreateHanziResponse,
     HanziDatasetDetailResponse,
-    HanziDatasetItemsListResponse,
+    DatasetHanziRelationsListResponse,
     HanziDatasetListResponse,
     HanziDatasetResponse,
     HanziDictionaryInitRequest,
@@ -318,7 +318,7 @@ async def get_hanzi_dataset(
         raise HTTPException(status_code=404, detail=str(exc))
 
 
-@router.get("/datasets/{dataset_id}/items", response_model=HanziDatasetItemsListResponse)
+@router.get("/datasets/{dataset_id}/items", response_model=DatasetHanziRelationsListResponse)
 async def list_hanzi_dataset_items(
     dataset_id: str,
     skip: Optional[int] = Query(None, ge=0),
@@ -375,6 +375,21 @@ async def create_hanzi_in_dataset(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/datasets/{dataset_id}/batch-delete-items")
+async def batch_delete_dataset_items(
+    dataset_id: str,
+    current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import delete as sqla_delete
+    from app.models.hanzi_dictionary import DatasetHanziRelation
+    result = await db.execute(
+        sqla_delete(DatasetHanziRelation).where(DatasetHanziRelation.dataset_id == dataset_id)
+    )
+    await db.commit()
+    return {"status": "success", "deleted": result.rowcount}
 
 
 @router.delete("/datasets/{dataset_id}")
@@ -482,3 +497,24 @@ async def delete_hanzi(
     if not success:
         raise HTTPException(status_code=404, detail="汉字不存在")
     return {"status": "success"}
+
+
+@router.post("/batch-delete")
+async def batch_delete_hanzi(
+    ids: list[str] = Body(...),
+    current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    service = HanziService(db)
+    deleted = await service.batch_delete_hanzi(ids, current_teacher.user_id)
+    return {"status": "success", "deleted": deleted}
+
+
+@router.post("/batch-delete-all")
+async def batch_delete_all_hanzi(
+    current_teacher: Teacher = Depends(get_current_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    service = HanziService(db)
+    deleted = await service.batch_delete_all_hanzi(current_teacher.user_id)
+    return {"status": "success", "deleted": deleted}

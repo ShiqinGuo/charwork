@@ -392,6 +392,7 @@ async def save_teacher_feedback(
         id=id,
         teacher_feedback=body.teacher_feedback,
         score=body.score,
+        override_ai_level=body.override_ai_level,
     )
     if not submission:
         raise HTTPException(status_code=404, detail="提交记录不存在")

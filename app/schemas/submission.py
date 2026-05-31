@@ -1,6 +1,6 @@
-from typing import Optional, List
+from typing import Any, Optional, List
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from enum import Enum
 from app.schemas.attachment import AttachmentResponse
 
@@ -33,6 +33,7 @@ class SubmissionGrade(BaseModel):
 class TeacherFeedbackUpdate(BaseModel):
     teacher_feedback: Optional[str] = None
     score: int
+    override_ai_level: Optional[str] = Field(None, description="教师覆盖AI等级: A/B/C/D")
 
 
 class SubmissionResponse(SubmissionBase):
@@ -45,8 +46,21 @@ class SubmissionResponse(SubmissionBase):
     attachments: List[AttachmentResponse] = []
     submitted_at: datetime
     graded_at: Optional[datetime] = None
+    student_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_student_name(cls, data: Any) -> Any:
+        """从 ORM 对象的 student 关系中提取姓名。"""
+        if isinstance(data, dict):
+            if "student" in data and data["student"] and hasattr(data["student"], "name"):
+                data["student_name"] = data["student"].name
+            return data
+        if hasattr(data, "student") and data.student:
+            return {**data.__dict__, "student_name": data.student.name}
+        return data
 
 
 class SubmissionListResponse(BaseModel):

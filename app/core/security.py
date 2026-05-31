@@ -20,7 +20,7 @@ from app.models.user import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 SESSION_KEY_PREFIX = "auth:session:"  # Redis 会话键前缀
-# 使用 Lua 保证“读取并续期”原子执行，避免并发请求下出现读到旧 TTL 的竞态。
+# 使用 Lua 保证"读取并续期"原子执行，避免并发请求下出现读到旧 TTL 的竞态。
 SESSION_FETCH_AND_REFRESH_LUA = """
 local value = redis.call("GET", KEYS[1])
 if not value then

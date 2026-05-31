@@ -157,23 +157,66 @@ class HanziService:
         return self._to_response(updated_hanzi)
 
     async def delete_hanzi(self, id: str, current_user_id: str) -> bool:
-        """
-        功能描述：
-            删除汉字。
-
-        参数：
-            id (str): 目标记录ID。
-            current_user_id (str): 当前用户ID，用于限制私有字库作用域。
-
-        返回值：
-            bool: 返回操作是否成功。
-        """
         hanzi = await self.repo.get(id, current_user_id)
         if not hanzi:
             return False
-
+        from app.models.hanzi_dictionary import DatasetHanziRelation
+        from sqlalchemy import delete as sqla_delete
+        await self.db.execute(sqla_delete(DatasetHanziRelation).where(DatasetHanziRelation.hanzi_id == id))
+        await self.db.commit()
         await self.repo.delete(hanzi)
         return True
+
+    async def batch_delete_hanzi(self, ids: list[str], current_user_id: str) -> int:
+        if not ids:
+            return 0
+        from app.models.hanzi_dictionary import DatasetHanziRelation
+        from app.models.hanzi import Hanzi
+        from sqlalchemy import delete as sqla_delete, or_
+        # 先删关联关系
+        await self.db.execute(sqla_delete(DatasetHanziRelation).where(DatasetHanziRelation.hanzi_id.in_(ids)))
+        await self.db.flush()
+        # 删除 hanzi（own records OR imported records with no owner）
+        result = await self.db.execute(
+            sqla_delete(Hanzi).where(
+                Hanzi.id.in_(ids),
+                or_(
+                    Hanzi.created_by_user_id == current_user_id,
+                    Hanzi.created_by_user_id.is_(None),
+                    Hanzi.created_by_user_id == "",
+                ),
+            )
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def batch_delete_all_hanzi(self, current_user_id: str) -> int:
+        from app.models.hanzi_dictionary import DatasetHanziRelation
+        from app.models.hanzi import Hanzi
+        from sqlalchemy import delete as sqla_delete, or_, select
+        # 先删所有关联
+        result = await self.db.execute(
+            sqla_delete(DatasetHanziRelation).where(
+                DatasetHanziRelation.hanzi_id.in_(
+                    select(Hanzi.id).where(
+                        or_(Hanzi.created_by_user_id == current_user_id,
+                            Hanzi.created_by_user_id.is_(None),
+                            Hanzi.created_by_user_id == "")
+                    )
+                )
+            )
+        )
+        await self.db.flush()
+        # 删所有 hanzi
+        result = await self.db.execute(
+            sqla_delete(Hanzi).where(
+                or_(Hanzi.created_by_user_id == current_user_id,
+                    Hanzi.created_by_user_id.is_(None),
+                    Hanzi.created_by_user_id == "")
+            )
+        )
+        await self.db.commit()
+        return result.rowcount
 
     async def get_strokes(self, ch: str) -> dict:
         """

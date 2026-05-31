@@ -47,7 +47,7 @@ def extract_zip_to_temp(zip_path: str, output_dir: str) -> str:
     return temp_dir
 
 
-def merge_images(image_paths: List[str], grid_size: Tuple[int, int] = (10, 10)) -> List[str]:
+def merge_images(image_paths: List[str], grid_size: Tuple[int, int] = (5, 5)) -> List[str]:
     """
     功能描述：
         合并图片。

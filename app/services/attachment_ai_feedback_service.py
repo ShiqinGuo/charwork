@@ -46,9 +46,15 @@ class AttachmentAIFeedbackService:
                 "attachment_id": attachment.id,
                 "char": ocr_text,
                 "ocr_text": ocr_text,
-                "stroke_score": scores.get("stroke_score"),
-                "structure_score": scores.get("structure_score"),
-                "overall_score": scores.get("overall_score"),
+                # 新四维度字段（兼容旧字段名 fallback）
+                "stroke_quality": scores.get("stroke_quality") or scores.get("stroke_score"),
+                "structure_balance": scores.get("structure_balance") or scores.get("structure_score"),
+                "layout_placement": scores.get("layout_placement") or scores.get("overall_score"),
+                "aesthetic_appeal": scores.get("aesthetic_appeal") or 0,
+                # 保留旧字段兼容旧 UI
+                "stroke_score": scores.get("stroke_score") or scores.get("stroke_quality"),
+                "structure_score": scores.get("structure_score") or scores.get("structure_balance"),
+                "overall_score": scores.get("overall_score") or scores.get("layout_placement"),
                 "summary": scores.get("summary", ""),
             }
             feedback = await self.feedback_repo.upsert_feedback(

@@ -22,17 +22,19 @@ logger = logging.getLogger(__name__)
 
 _ATTACHMENT_PROMPT_TEMPLATE = (
     "你是书法评审专家。图片是一个学生手写的汉字「{char}」。\n"
-    "请从以下三个维度评分（1-10分）并给出总评：\n"
-    "- stroke_score：笔画质量（起收笔、粗细变化）\n"
-    "- structure_score：结构布局（间架比例、重心）\n"
-    "- overall_score：整体气韵\n"
+    "请从以下四个维度评分（1-10分）并给出简短评语：\n"
+    "- stroke_quality：笔画规范性（笔画完整性、规范性、起收笔自然度）\n"
+    "- structure_balance：结构协调性（字内各部分比例关系、重心分布）\n"
+    "- layout_placement：整体布局性（字在书写区域中的位置安排是否恰当）\n"
+    "- aesthetic_appeal：书写美观性（综合视觉效果，在前述维度上的整体观感）\n"
     "以 JSON 格式返回，不要输出其他内容。示例：\n"
-    '{{"stroke_score":7,"structure_score":8,"overall_score":6,"summary":"..."}}'
+    '{{"stroke_quality":7,"structure_balance":8,"layout_placement":6,"aesthetic_appeal":7,"summary":"..."}}'
 )
 _SUMMARY_PROMPT_TEMPLATE = (
     "你是书法老师，请根据以下多个汉字图片的评价结果生成一次总评。\n"
-    "输入是 JSON 数组，每项包含 char、stroke_score、structure_score、overall_score、summary。\n"
-    "请输出 JSON，字段必须包含：summary、strengths、improvements、overall_level。\n"
+    "输入是 JSON 数组，每项包含 char、stroke_quality、structure_balance、layout_placement、aesthetic_appeal、summary。\n"
+    "请输出 JSON，字段必须包含：summary、strengths、improvements、overall_level，\n"
+    "以及各维度综合平均分：stroke_quality_avg、structure_balance_avg、layout_placement_avg、aesthetic_appeal_avg。\n"
     "strengths 和 improvements 必须是字符串数组，不要输出额外文本。"
 )
 _JSON_PATTERN = re.compile(r"\{.*\}", re.DOTALL)

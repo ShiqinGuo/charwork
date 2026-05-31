@@ -4,7 +4,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hanzi import Hanzi
-from app.models.hanzi_dictionary import HanziDatasetItem
+from app.models.hanzi_dictionary import DatasetHanziRelation
 from app.schemas.hanzi import HanziCreate, HanziUpdate
 from app.utils.hanzi_dictionary_parser import normalize_pinyin_keyword
 
@@ -40,8 +40,8 @@ class HanziRepository:
         source: Optional[str] = None,
     ):
         if dataset_id:
-            query = query.join(HanziDatasetItem, HanziDatasetItem.hanzi_id == Hanzi.id)
-            query = query.where(HanziDatasetItem.dataset_id == dataset_id)
+            query = query.join(DatasetHanziRelation, DatasetHanziRelation.hanzi_id == Hanzi.id)
+            query = query.where(DatasetHanziRelation.dataset_id == dataset_id)
         query = self._apply_owner_scope(query, created_by_user_id)
         if structure:
             query = query.where(Hanzi.structure == structure)

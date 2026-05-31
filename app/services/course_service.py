@@ -1,5 +1,5 @@
 """
-为什么这样做：课程查询把“权限过滤、分页、自定义字段补齐”集中处理，确保不同入口返回口径一致。
+为什么这样做：课程查询把"权限过滤、分页、自定义字段补齐"集中处理，确保不同入口返回口径一致。
 特殊逻辑：学生视角先算可访问课程集合，再重算 total，避免跨班课程被误计入分页边界。
 """
 
@@ -74,7 +74,7 @@ class CourseService:
             CourseListResponse: 返回列表或分页查询结果。
         """
         if current_student_id and not teaching_class_id and not teacher_id:
-            # 学生从“我的课程”入口访问时，先预判是否存在可访问课程，避免后续分页查询返回空页但 total 仍显示全量课程数。
+            # 学生从"我的课程"入口访问时，先预判是否存在可访问课程，避免后续分页查询返回空页但 total 仍显示全量课程数。
             course_ids = await self.repo.list_ids_for_student(current_student_id)
             if not course_ids:
                 payload = build_paged_response(

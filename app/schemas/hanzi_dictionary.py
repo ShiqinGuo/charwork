@@ -57,7 +57,7 @@ class HanziDatasetDetailResponse(HanziDatasetResponse):
     pass
 
 
-class HanziDatasetItemsListResponse(BaseModel):
+class DatasetHanziRelationsListResponse(BaseModel):
     total: int
     items: list[HanziResponse]
     page: Optional[int] = None

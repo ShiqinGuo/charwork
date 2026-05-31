@@ -1,7 +1,7 @@
 from app.core.database import Base  # noqa
 from app.models.category import Category  # noqa
 from app.models.hanzi import Hanzi, StructureType, VariantType, LevelType  # noqa
-from app.models.hanzi_dictionary import HanziDictionary, HanziDataset, HanziDatasetItem  # noqa
+from app.models.hanzi_dictionary import HanziDictionary, HanziDataset, DatasetHanziRelation  # noqa
 from app.models.user import User, UserRole  # noqa
 from app.models.teacher import Teacher  # noqa
 from app.models.student import Student  # noqa
@@ -45,3 +45,4 @@ from app.models.ai_feedback import (  # noqa
     AIFeedbackTargetType,
     AIFeedbackVisibility,
 )
+from app.models.assignment_template import AssignmentTemplate  # noqa

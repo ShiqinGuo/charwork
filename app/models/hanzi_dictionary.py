@@ -32,16 +32,15 @@ class HanziDataset(Base):
     updated_at: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
 
-class HanziDatasetItem(Base):
-    __tablename__ = "hanzi_dataset_item"
+class DatasetHanziRelation(Base):
+    __tablename__ = "datasethanzirelation"
     __table_args__ = (
-        UniqueConstraint("dataset_id", "dictionary_id", name="uq_dataset_dictionary"),
+        UniqueConstraint("dataset_id", "hanzi_id", name="uq_dataset_hanzi"),
     )
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=generate_id)
     dataset_id: Mapped[str] = mapped_column(String(50), ForeignKey("hanzi_dataset.id"), nullable=False, index=True)
     hanzi_id: Mapped[str] = mapped_column(
-        "dictionary_id",
         String(50),
         ForeignKey("hanzi.id"),
         nullable=False,

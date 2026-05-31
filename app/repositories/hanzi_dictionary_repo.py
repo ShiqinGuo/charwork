@@ -5,7 +5,7 @@ from sqlalchemy import case, delete, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hanzi import Hanzi
-from app.models.hanzi_dictionary import HanziDataset, HanziDatasetItem, HanziDictionary
+from app.models.hanzi_dictionary import HanziDataset, DatasetHanziRelation, HanziDictionary
 from app.utils.hanzi_dictionary_parser import normalize_pinyin_keyword
 
 
@@ -383,9 +383,9 @@ class HanziDatasetRepository:
     async def count_items(self, dataset_id: str) -> int:
         result = await self.db.execute(
             select(func.count())
-            .select_from(HanziDatasetItem)
-            .join(Hanzi, Hanzi.id == HanziDatasetItem.hanzi_id)
-            .where(HanziDatasetItem.dataset_id == dataset_id)
+            .select_from(DatasetHanziRelation)
+            .join(Hanzi, Hanzi.id == DatasetHanziRelation.hanzi_id)
+            .where(DatasetHanziRelation.dataset_id == dataset_id)
         )
         return int(result.scalar() or 0)
 
@@ -398,10 +398,10 @@ class HanziDatasetRepository:
     ) -> list[Hanzi]:
         result = await self.db.execute(
             select(Hanzi)
-            .join(HanziDatasetItem, HanziDatasetItem.hanzi_id == Hanzi.id)
-            .join(HanziDataset, HanziDataset.id == HanziDatasetItem.dataset_id)
+            .join(DatasetHanziRelation, DatasetHanziRelation.hanzi_id == Hanzi.id)
+            .join(HanziDataset, HanziDataset.id == DatasetHanziRelation.dataset_id)
             .where(
-                HanziDatasetItem.dataset_id == dataset_id,
+                DatasetHanziRelation.dataset_id == dataset_id,
                 HanziDataset.created_by_user_id == created_by_user_id,
                 or_(
                     Hanzi.created_by_user_id == created_by_user_id,
@@ -417,11 +417,11 @@ class HanziDatasetRepository:
     async def count_items_in_scope(self, dataset_id: str, created_by_user_id: str) -> int:
         result = await self.db.execute(
             select(func.count())
-            .select_from(HanziDatasetItem)
-            .join(Hanzi, Hanzi.id == HanziDatasetItem.hanzi_id)
-            .join(HanziDataset, HanziDataset.id == HanziDatasetItem.dataset_id)
+            .select_from(DatasetHanziRelation)
+            .join(Hanzi, Hanzi.id == DatasetHanziRelation.hanzi_id)
+            .join(HanziDataset, HanziDataset.id == DatasetHanziRelation.dataset_id)
             .where(
-                HanziDatasetItem.dataset_id == dataset_id,
+                DatasetHanziRelation.dataset_id == dataset_id,
                 HanziDataset.created_by_user_id == created_by_user_id,
                 or_(
                     Hanzi.created_by_user_id == created_by_user_id,
@@ -448,14 +448,14 @@ class HanziDatasetRepository:
         return dataset
 
     async def replace_items(self, dataset_id: str, hanzi_ids: list[str]) -> None:
-        await self.db.execute(delete(HanziDatasetItem).where(HanziDatasetItem.dataset_id == dataset_id))
+        await self.db.execute(delete(DatasetHanziRelation).where(DatasetHanziRelation.dataset_id == dataset_id))
         for hanzi_id in hanzi_ids:
-            self.db.add(HanziDatasetItem(dataset_id=dataset_id, hanzi_id=hanzi_id))
+            self.db.add(DatasetHanziRelation(dataset_id=dataset_id, hanzi_id=hanzi_id))
         await self.db.commit()
 
     async def get_item_hanzi_ids(self, dataset_id: str) -> set[str]:
         result = await self.db.execute(
-            select(HanziDatasetItem.hanzi_id).where(HanziDatasetItem.dataset_id == dataset_id)
+            select(DatasetHanziRelation.hanzi_id).where(DatasetHanziRelation.dataset_id == dataset_id)
         )
         return set(result.scalars().all())
 
@@ -467,11 +467,11 @@ class HanziDatasetRepository:
         if not append_ids:
             return 0
         for hanzi_id in append_ids:
-            self.db.add(HanziDatasetItem(dataset_id=dataset_id, hanzi_id=hanzi_id))
+            self.db.add(DatasetHanziRelation(dataset_id=dataset_id, hanzi_id=hanzi_id))
         await self.db.commit()
         return len(append_ids)
 
     async def delete_dataset(self, dataset_id: str) -> None:
-        await self.db.execute(delete(HanziDatasetItem).where(HanziDatasetItem.dataset_id == dataset_id))
+        await self.db.execute(delete(DatasetHanziRelation).where(DatasetHanziRelation.dataset_id == dataset_id))
         await self.db.execute(delete(HanziDataset).where(HanziDataset.id == dataset_id))
         await self.db.commit()

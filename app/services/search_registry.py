@@ -14,6 +14,7 @@ from app.models.assignment import Assignment
 from app.models.comment import Comment, TargetType
 from app.models.course import Course
 from app.models.hanzi import Hanzi
+from app.models.hanzi_dictionary import HanziDataset
 from app.models.student import Student
 from app.models.submission import Submission
 from app.models.teacher import Teacher
@@ -323,6 +324,33 @@ async def _build_student_document(
     )
 
 
+# ===== dataset =====
+
+async def _load_all_datasets(db: AsyncSession) -> list[HanziDataset]:
+    return (await db.execute(select(HanziDataset))).scalars().all()
+
+
+async def _load_dataset(db: AsyncSession, source_id: str) -> HanziDataset | None:
+    return (await db.execute(select(HanziDataset).where(HanziDataset.id == source_id))).scalars().first()
+
+
+async def _build_dataset_document(
+    _db: AsyncSession, item: HanziDataset, _context: dict
+) -> SearchDocument | None:
+    return SearchDocument(
+        module="dataset",
+        source_id=item.id,
+        title=item.name,
+        content=f"{item.name} {item.level or ''} {item.batch_no or ''}",
+        extra_fields={
+            "created_by_user_id": item.created_by_user_id,
+            "level": item.level or "",
+            "batch_no": item.batch_no or "",
+            "target_type": "dataset",
+        },
+    )
+
+
 # ===== 注册表 =====
 
 SEARCH_MODULE_REGISTRY: dict[str, SearchModuleConfig] = {
@@ -373,6 +401,14 @@ SEARCH_MODULE_REGISTRY: dict[str, SearchModuleConfig] = {
         load_one=_load_student,
         build_document=_build_student_document,
         preload=_preload_student_context,
+    ),
+    "dataset": SearchModuleConfig(
+        table="hanzi_dataset",
+        module="dataset",
+        load_all=_load_all_datasets,
+        load_one=_load_dataset,
+        build_document=_build_dataset_document,
+        preload=None,
     ),
 }
 

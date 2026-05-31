@@ -468,6 +468,7 @@ class SubmissionService:
         id: str,
         teacher_feedback: Optional[str],
         score: int,
+        override_ai_level: Optional[str] = None,
     ) -> Optional[SubmissionResponse]:
         """
         功能描述：
@@ -477,6 +478,7 @@ class SubmissionService:
             id (str): 目标记录ID。
             teacher_feedback (Optional[str]): 教师评语文本。
             score (int): 教师打分。
+            override_ai_level (Optional[str]): 教师覆盖AI等级。
         返回值：
             Optional[SubmissionResponse]: 返回更新后的结果对象；不存在时返回 None。
         """
@@ -493,6 +495,10 @@ class SubmissionService:
             "score": score,
             "status": transition_result.to_status,
         }
+        if override_ai_level:
+            existing_ai = dict(submission.ai_feedback or {})
+            existing_ai["teacher_override_level"] = override_ai_level
+            update_payload["ai_feedback"] = existing_ai
         if not submission.graded_at:
             update_payload["graded_at"] = datetime.now()
         updated = await self.repo.update(submission, update_payload)

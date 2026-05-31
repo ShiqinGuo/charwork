@@ -1,5 +1,5 @@
 """
-为什么这样做：导入流程拆为“准备-识别-产物生成”阶段并显式上报进度，便于长任务可观测与故障定位。
+为什么这样做：导入流程拆为"准备-识别-产物生成"阶段并显式上报进度，便于长任务可观测与故障定位。
 特殊逻辑：默认元数据与失败日志均配置化，保证缺少外部映射或部分识别失败时仍能产出可追溯结果。
 """
 
@@ -323,7 +323,7 @@ class ImportService:
                 await update_status(current_progress, f"正在处理 {index + 1}/{total_count}…")
 
             try:
-                # 单张识别失败不能阻断整批导入，这里按“逐张容错、集中汇总失败原因”的方式处理。
+                # 单张识别失败不能阻断整批导入，这里按"逐张容错、集中汇总失败原因"的方式处理。
                 result_row = await self._recognize_single_image(
                     image_dir=context.image_dir,
                     image_file=image_file,

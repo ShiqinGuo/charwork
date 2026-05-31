@@ -1,6 +1,6 @@
 """
 为什么这样做：提交状态迁移集中到显式状态机，避免服务层散落硬编码状态值。
-特殊逻辑：学生修改提交属于“重新提交”事件，允许从 submitted 和 graded 回到 submitted。
+特殊逻辑：学生修改提交属于"重新提交"事件，允许从 submitted 和 graded 回到 submitted。
 """
 
 from dataclasses import dataclass

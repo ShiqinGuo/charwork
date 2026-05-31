@@ -93,7 +93,7 @@ class AssignmentUpdate(BaseModel):
         """
         if isinstance(data, dict):
             copied = dict(data)
-            # 更新场景保持同样兼容策略，避免“创建可用、更新失败”的接口行为分叉。
+            # 更新场景保持同样兼容策略，避免"创建可用、更新失败"的接口行为分叉。
             if copied.get("character_ids") is None and copied.get("hanzi_ids") is not None:
                 copied["character_ids"] = copied["hanzi_ids"]
             if copied.get("hanzi_ids") is None and copied.get("character_ids") is not None:

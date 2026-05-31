@@ -1,5 +1,5 @@
 """
-为什么这样做：识别链路采用“火山上传换公网 URL + 百度 OCR”组合，降低本地文件直传第三方的不稳定因素。
+为什么这样做：识别链路采用"火山上传换公网 URL + 百度 OCR"组合，降低本地文件直传第三方的不稳定因素。
 特殊逻辑：访问令牌做提前失效缓存与双配置校验，避免临界过期和半配置状态触发批量失败。
 """
 
@@ -178,29 +178,19 @@ class OCRService:
         return result
 
     def _extract_text(self, payload: Any) -> str | list[str]:
-        """
-        功能描述：
-            提取文本。
-
-        参数：
-            payload (Any): 待处理的原始数据载荷。
-
-        返回值：
-            str | list[str]: 返回str | list[str]类型的处理结果。
-        """
         if not isinstance(payload, dict):
             return ""
-
+        # 检查百度返回的错误码（QPS 限流、参数错误等）
+        if "error_code" in payload:
+            logger.warning("Baidu OCR error %s: %s", payload.get("error_code"), payload.get("error_msg", ""))
+            return ""
         words_result = payload.get("words_result", [])
         if not words_result:
             return ""
-
         raw_lines = [item.get("words", "") for item in words_result]
         if not any(raw_lines):
             return ""
-
         full_text = "".join(["".join(row).replace(" ", "") for row in raw_lines])
-
         if len(full_text) == 1:
             return full_text
         return [char for char in full_text]

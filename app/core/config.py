@@ -26,7 +26,7 @@ DEFAULT_SEARCH_SYNC_CONFIG = {
     "SEARCH_SYNC_ENABLED": True,
     "SEARCH_SYNC_RABBITMQ_QUEUE": "canal.search.sync",
     "SEARCH_SYNC_RABBITMQ_PREFETCH": 50,
-    "SEARCH_SYNC_CANAL_TABLES": "assignment,comment,hanzi,course,teaching_class,student,hanzi_dictionary",
+    "SEARCH_SYNC_CANAL_TABLES": "assignment,comment,hanzi,course,teaching_class,student,hanzi_dictionary,hanzi_dataset",
 }
 # AI 智能服务默认配置
 DEFAULT_AI_CONFIG = {

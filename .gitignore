@@ -7,6 +7,8 @@ charwork.egg-info/
 __pycache__/
 test*.py
 CLAUDE.md
+AGENTS.md
 .claude/
 .kiro
-docs/superpowers/
+docs/
+.playwright-mcp/
