@@ -175,13 +175,13 @@ def run_dataset_import_sync(
     ok["id"] = [uuid_mod.uuid4().hex[:16] for _ in range(len(ok))]
     ok["pinyin"] = ok["char"].astype(str).apply(resolve_pinyin)
     ok["source"] = "dataset_import"
-    ok["level"] = metadata.get("level", "")
+    ok["level"] = metadata.get("level") or "D"
     ok["image_path"] = ok["url"]
     ok["character"] = ok["char"].apply(lambda c: c if c else "?")
     ok["stroke_count"] = ok["char"].apply(lambda c: len(c) if c else 0)
     ok["created_by_user_id"] = metadata.get("user_id", "")
 
-    dataset_id = uuid_mod.uuid4().hex[:16]
+    existing_dataset_id = metadata.get("dataset_id")
     db = db_session_factory()
     try:
         dict_rows = db.execute(
@@ -196,13 +196,18 @@ def run_dataset_import_sync(
             )
             ok["stroke_pattern"] = ok["stroke_pattern"].fillna("")
 
-        dataset = HanziDataset(
-            id=dataset_id, name=metadata.get("name", f"Import-{task_id[:6]}"),
-            level=metadata.get("level", ""), batch_no=metadata.get("batch_no", ""),
-            created_by_user_id=metadata.get("user_id", ""),
-        )
-        db.add(dataset)
-        db.flush()
+        # 复用已有数据集或创建新的
+        if existing_dataset_id:
+            dataset_id = existing_dataset_id
+        else:
+            dataset_id = uuid_mod.uuid4().hex[:16]
+            dataset = HanziDataset(
+                id=dataset_id, name=metadata.get("name", f"Import-{task_id[:6]}"),
+                level=metadata.get("level") or "D", batch_no=metadata.get("batch_no", ""),
+                created_by_user_id=metadata.get("user_id", ""),
+            )
+            db.add(dataset)
+            db.flush()
 
         hanzi_cols = ["id", "character", "image_path", "stroke_count", "pinyin", "stroke_pattern", "source", "level", "created_by_user_id"]
         hanzi_rows = ok[hanzi_cols].to_dict("records")

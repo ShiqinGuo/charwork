@@ -24,6 +24,7 @@ TEMP_ROOT = os.path.join(os.path.dirname(__file__), "..", "..", "..", "temp", "d
 @router.post("/submit")
 async def submit_dataset_import(
     files: list[UploadFile] = File(...),
+    dataset_id: str = Form(""),
     dataset_name: str = Form(...),
     level: str = Form(""),
     batch_no: str = Form(""),
@@ -47,6 +48,7 @@ async def submit_dataset_import(
         "level": level,
         "batch_no": batch_no,
         "user_id": teacher.user_id,
+        "dataset_id": dataset_id or None,
     }
 
     run_dataset_import.apply_async(
