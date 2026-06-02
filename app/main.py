@@ -115,6 +115,13 @@ async def _bootstrap_application() -> None:
     setup_logging(settings.ENVIRONMENT)
     os.makedirs(settings.MEDIA_ROOT, exist_ok=True)
     stroke_service.load()
+
+    # 启动时异步触发一次 ImageX URL 刷新
+    if settings.URL_REFRESH_ENABLED:
+        from app.tasks.url_refresh_tasks import refresh_imagex_urls
+        refresh_imagex_urls.delay()
+        logging.getLogger(__name__).info("启动时已提交 ImageX URL 刷新任务")
+
     async with AsyncSessionLocal() as db:
         await ManagementSystemService(db).backfill_default_systems()
         await HanziDictionaryService(db).initialize_from_strokes(settings.STROKES_FILE_PATH, force=False)

@@ -78,6 +78,7 @@ class AttachmentService:
             # 调用 OCRService 上传到云存储
             upload_result = await self.ocr_service.upload_image(temp_file_path)
             file_url = upload_result.get("image_url", "")
+            uri = upload_result.get("uri", "")
 
             # 获取文件大小
             file_size = len(content)
@@ -87,6 +88,7 @@ class AttachmentService:
                 owner_type=owner_type,
                 owner_id=owner_id,
                 file_url=file_url,
+                uri=uri or None,
                 filename=file.filename,
                 file_size=file_size,
                 mime_type=file.content_type or "application/octet-stream",

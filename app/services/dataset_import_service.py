@@ -57,12 +57,17 @@ def _calc_progress(stage: str, completed: int, total: int) -> int:
 def _upload_one(path: str, ocr: OCRService) -> dict:
     try:
         if not os.path.isfile(path):
-            return {"path": path, "url": "", "status": "failed"}
+            return {"path": path, "url": "", "uri": "", "status": "failed"}
         info = ocr._upload_image(path)
         img_url = ocr._transform_uri2url(info.get("URI", ""))
-        return {"path": path, "url": img_url or "", "status": "ok" if img_url else "failed"}
+        return {
+            "path": path,
+            "url": img_url or "",
+            "uri": info.get("URI", ""),
+            "status": "ok" if img_url else "failed",
+        }
     except Exception:
-        return {"path": path, "url": "", "status": "failed"}
+        return {"path": path, "url": "", "uri": "", "status": "failed"}
 
 
 def _ocr_merged(image_paths: list[str], ocr: OCRService) -> list[str]:
@@ -149,14 +154,17 @@ def run_dataset_import_sync(
         # 映射回原始 url（按网格顺序，左→右 上→下）
         for i, r in enumerate(batch):
             char = chars[i] if i < len(chars) else ""
-            all_results.append({"path": r["path"], "url": r["url"], "char": char, "status": "ok"})
+            all_results.append({
+                "path": r["path"], "url": r["url"], "uri": r.get("uri", ""),
+                "char": char, "status": "ok",
+            })
         recognized += len(batch)
         pub("recognizing", recognized, f"识别中 {recognized}/{len(ok_uploads)}")
 
     # 添加失败的
     for r in upload_results:
         if r["status"] != "ok":
-            all_results.append({"path": r["path"], "url": "", "char": "", "status": "failed"})
+            all_results.append({"path": r["path"], "url": "", "uri": "", "char": "", "status": "failed"})
 
     ok_count = sum(1 for r in all_results if r["char"])
     pub("recognizing", len(ok_uploads), f"识别完成，成功 {ok_count}/{len(ok_uploads)}")
@@ -209,7 +217,10 @@ def run_dataset_import_sync(
             db.add(dataset)
             db.flush()
 
-        hanzi_cols = ["id", "character", "image_path", "stroke_count", "pinyin", "stroke_pattern", "source", "level", "created_by_user_id"]
+        hanzi_cols = [
+            "id", "character", "image_path", "uri", "stroke_count",
+            "pinyin", "stroke_pattern", "source", "level", "created_by_user_id",
+        ]
         hanzi_rows = ok[hanzi_cols].to_dict("records")
         for i in range(0, len(hanzi_rows), BATCH_SIZE):
             db.execute(insert(Hanzi.__table__), hanzi_rows[i:i + BATCH_SIZE])

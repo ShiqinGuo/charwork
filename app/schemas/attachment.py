@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 class AttachmentBase(BaseModel):
     file_url: str
+    uri: str | None = None
     filename: str
     file_size: int
     mime_type: str

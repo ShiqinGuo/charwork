@@ -34,6 +34,7 @@ class AttachmentRepository:
             owner_type=attachment_in.owner_type,
             owner_id=attachment_in.owner_id,
             file_url=attachment_in.file_url,
+            uri=attachment_in.uri,
             filename=attachment_in.filename,
             file_size=attachment_in.file_size,
             mime_type=attachment_in.mime_type,

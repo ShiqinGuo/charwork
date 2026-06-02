@@ -65,6 +65,10 @@ class Hanzi(Base):
     )
     character: Mapped[str] = mapped_column(String(1), nullable=False, index=True)
     image_path: Mapped[str] = mapped_column(String(255), nullable=True)
+    # veImageX 对象存储 URI，用于 URL 过期后重新签名刷新
+    uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # 上次刷新 URL 的时间，用于判断是否需要重新签名
+    url_refreshed_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
     stroke_count: Mapped[int] = mapped_column(Integer, nullable=True)
 
     structure: Mapped[StructureType] = mapped_column(

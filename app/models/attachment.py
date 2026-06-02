@@ -26,6 +26,10 @@ class Attachment(Base):
     owner_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     owner_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     file_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    # veImageX 对象存储 URI，用于 URL 过期后重新签名刷新
+    uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # 上次刷新 URL 的时间，用于判断是否需要重新签名
+    url_refreshed_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
