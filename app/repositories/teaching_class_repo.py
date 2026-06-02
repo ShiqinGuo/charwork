@@ -238,6 +238,50 @@ class TeachingClassRepository:
         """
         await self.db.commit()
 
+    async def remove_member(self, teaching_class_id: str, student_id: str) -> bool:
+        """
+        功能描述：
+            移除教学班中的学生成员。
+
+        参数：
+            teaching_class_id (str): 教学班级ID。
+            student_id (str): 学生ID。
+
+        返回值：
+            bool: 是否成功移除。
+        """
+        result = await self.db.execute(
+            select(TeachingClassMember).where(
+                TeachingClassMember.teaching_class_id == teaching_class_id,
+                TeachingClassMember.student_id == student_id,
+            )
+        )
+        member = result.scalars().first()
+        if not member:
+            return False
+        await self.db.delete(member)
+        await self.db.commit()
+        return True
+
+    async def list_student_ids_for_teacher(self, teacher_id: str) -> list[str]:
+        """
+        功能描述：
+            查询教师所有教学班中的学生ID列表。
+
+        参数：
+            teacher_id (str): 教师ID。
+
+        返回值：
+            list[str]: 学生ID列表。
+        """
+        result = await self.db.execute(
+            select(TeachingClassMember.student_id)
+            .join(TeachingClass, TeachingClass.id == TeachingClassMember.teaching_class_id)
+            .where(TeachingClass.teacher_id == teacher_id)
+            .distinct()
+        )
+        return [row[0] for row in result.all()]
+
     async def refresh(self, item) -> None:
         """
         功能描述：

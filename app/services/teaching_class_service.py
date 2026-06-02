@@ -153,6 +153,29 @@ class TeachingClassService:
             items=[self._to_member_response(item) for item in items],
         )
 
+    async def remove_member(self, teaching_class_id: str, student_id: str, teacher_id: str) -> bool:
+        """
+        功能描述：
+            教师移除教学班中的学生（仅限自己班级）。
+
+        参数：
+            teaching_class_id (str): 教学班级ID。
+            student_id (str): 学生ID。
+            teacher_id (str): 教师ID。
+
+        返回值：
+            bool: 是否成功移除。
+
+        异常：
+            ValueError: 班级不存在或不属于该教师。
+        """
+        teaching_class = await self.repo.get(teaching_class_id)
+        if not teaching_class:
+            raise ValueError("教学班级不存在")
+        if teaching_class.teacher_id != teacher_id:
+            raise ValueError("仅可移除本人教学班级中的学生")
+        return await self.repo.remove_member(teaching_class_id, student_id)
+
     async def create_join_token(
         self,
         teaching_class_id: str,

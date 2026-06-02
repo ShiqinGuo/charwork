@@ -117,22 +117,17 @@ class CourseService:
         course_in: CourseCreate,
         teacher_id: str,
     ) -> CourseResponse:
-        """
-        功能描述：
-            创建课程并返回结果。
-
-        参数：
-            course_in (CourseCreate): 课程输入对象。
-            teacher_id (str): 教师ID。
-        返回值：
-            CourseResponse: 返回创建后的结果对象。
-        """
-        teaching_class = await self.teaching_class_repo.get(course_in.teaching_class_id)
-        if not teaching_class:
-            raise ValueError("教学班级不存在")
-        if teaching_class.teacher_id != teacher_id:
-            raise ValueError("仅可为本人教学班级创建课程")
-        item = await self.repo.create(course_in, teacher_id)
+        """创建课程（可选关联多个教学班）。"""
+        teaching_class_ids = course_in.teaching_class_ids
+        if teaching_class_ids:
+            for tcid in teaching_class_ids:
+                tc = await self.teaching_class_repo.get(tcid)
+                if not tc:
+                    raise ValueError(f"教学班级不存在: {tcid}")
+                if tc.teacher_id != teacher_id:
+                    raise ValueError("仅可关联本人教学班级")
+        item = await self.repo.create(course_in, teacher_id, teaching_class_ids)
+        # 重新查询以加载关系
         return await self.get_course(item.id)
 
     async def update_course(
@@ -140,44 +135,33 @@ class CourseService:
         id: str,
         course_in: CourseUpdate,
     ) -> CourseResponse | None:
-        """
-        功能描述：
-            更新课程并返回最新结果。
-
-        参数：
-            id (str): 目标记录ID。
-            course_in (CourseUpdate): 课程输入对象。
-        返回值：
-            CourseResponse | None: 返回更新后的结果对象；未命中时返回 None。
-        """
+        """更新课程（含班级关联）。"""
         item = await self.repo.get(id)
         if not item:
             return None
-        if course_in.teaching_class_id:
-            teaching_class = await self.teaching_class_repo.get(course_in.teaching_class_id)
-            if not teaching_class:
-                raise ValueError("教学班级不存在")
-            if teaching_class.teacher_id != item.teacher_id:
-                raise ValueError("仅可绑定本人教学班级")
         updated = await self.repo.update(item, course_in)
+        if course_in.teaching_class_ids is not None:
+            if course_in.teaching_class_ids:
+                for tcid in course_in.teaching_class_ids:
+                    tc = await self.teaching_class_repo.get(tcid)
+                    if not tc:
+                        raise ValueError(f"教学班级不存在: {tcid}")
+                    if tc.teacher_id != item.teacher_id:
+                        raise ValueError("仅可关联本人教学班级")
+            await self.repo.set_teaching_classes(id, course_in.teaching_class_ids)
+            updated.teaching_class_id = course_in.teaching_class_ids[0] if course_in.teaching_class_ids else None
+            await self.repo.save()
         return await self.get_course(updated.id)
 
     @staticmethod
     def _to_response(item: Course, custom_field_values: dict | None = None) -> CourseResponse:
-        """
-        功能描述：
-            将输入数据转换为响应。
-
-        参数：
-            item (Course): 当前处理的实体对象。
-            custom_field_values (dict | None): 字典形式的结果数据。
-
-        返回值：
-            CourseResponse: 返回CourseResponse类型的处理结果。
-        """
+        """将 Course 模型转换为响应对象。"""
+        teaching_class_ids = [
+            link.teaching_class_id for link in (item.class_links or [])
+        ]
         return CourseResponse(
             id=item.id,
-            teaching_class_id=item.teaching_class_id,
+            teaching_class_ids=teaching_class_ids,
             teacher_id=item.teacher_id,
             name=item.name,
             code=item.code,

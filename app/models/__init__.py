@@ -17,7 +17,7 @@ from app.models.assignment_reminder import (  # noqa
 from app.models.submission import Submission, SubmissionStatus  # noqa
 from app.models.comment import Comment, TargetType  # noqa
 from app.models.comment_like import CommentLike  # noqa
-from app.models.course import Course, CourseStatus  # noqa
+from app.models.course import Course, CourseStatus, CourseTeachingClass  # noqa
 from app.models.custom_field import (  # noqa
     CustomFieldTargetType,
     CustomFieldType,

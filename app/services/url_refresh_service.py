@@ -8,10 +8,10 @@ ImageX URL 定时刷新服务。
 import logging
 import re
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urlparse
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from urllib.parse import urlparse
 
 from app.core.config import settings
 from app.core.url_refresh_config import URL_REFRESH_TABLE_CONFIG
@@ -20,11 +20,11 @@ from volcengine.imagex.v2.imagex_service import ImagexService
 
 logger = logging.getLogger(__name__)
 
-# URL 签名有效期（秒），与 OCRService.IMAGEX_URL_TTL 保持一致（30 天）
+# URL 签名有效期（鉴权未生效时实际约 30 分钟）
 _IMAGEX_URL_TTL = 2592000
 
-# 刷新阈值：距上次刷新超过此天数才重新签名（7 天，远小于 30 天 TTL）
-_REFRESH_THRESHOLD_DAYS = 7
+# 刷新阈值：距上次刷新超过 15 分钟即重新签名（保证在 30 分钟过期前续签）
+_REFRESH_THRESHOLD_MINUTES = 15
 
 # URI 提取正则：匹配 /{uri}~{tpl}.{format} 格式
 _URI_PATTERN = re.compile(r"/(.+?)~[^/]+?\.[\w]+$")
@@ -73,8 +73,8 @@ class UrlRefreshService:
         refreshed_at_col = getattr(model_cls, "url_refreshed_at")
         domains = [d.strip() for d in settings.URL_REFRESH_DOMAINS.split(",") if d.strip()]
 
-        # 只刷超过阈值未刷新的记录
-        threshold = datetime.now(timezone.utc) - timedelta(days=_REFRESH_THRESHOLD_DAYS)
+        # 只刷超过 15 分钟未刷新的记录，避免同一轮反复签
+        threshold = datetime.now(timezone.utc) - timedelta(minutes=_REFRESH_THRESHOLD_MINUTES)
         base_stmt = (
             select(model_cls)
             .where(uri_col.isnot(None))
