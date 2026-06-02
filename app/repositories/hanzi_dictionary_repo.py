@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.hanzi import Hanzi
 from app.models.hanzi_dictionary import HanziDataset, DatasetHanziRelation, HanziDictionary
-from app.utils.hanzi_dictionary_parser import normalize_pinyin_keyword
+from app.utils.hanzi_dictionary_parser import normalize_pinyin_keyword, split_stroke_pattern
 
 
 class HanziDictionaryRepository:
@@ -53,7 +53,7 @@ class HanziDictionaryRepository:
                                 HanziDictionary.pinyin,
                                 ""),
                             " ",
-                            "")).contains(normalized))
+                            "")).startswith(normalized))
         if stroke_count is not None:
             query = query.where(HanziDictionary.stroke_count == stroke_count)
         return query
@@ -415,9 +415,10 @@ class HanziDatasetRepository:
         if character:
             query = query.where(Hanzi.character == character)
         if pinyin:
-            query = query.where(Hanzi.pinyin.contains(pinyin))
+            query = query.where(Hanzi.pinyin.startswith(pinyin))
         if stroke_pattern:
-            query = query.where(Hanzi.stroke_pattern.contains(stroke_pattern))
+            for unit in split_stroke_pattern(stroke_pattern):
+                query = query.where(Hanzi.stroke_pattern.contains(unit))
         result = await self.db.execute(
             query.order_by(Hanzi.updated_at.desc()).offset(skip).limit(limit)
         )
@@ -446,9 +447,10 @@ class HanziDatasetRepository:
         if character:
             query = query.where(Hanzi.character == character)
         if pinyin:
-            query = query.where(Hanzi.pinyin.contains(pinyin))
+            query = query.where(Hanzi.pinyin.startswith(pinyin))
         if stroke_pattern:
-            query = query.where(Hanzi.stroke_pattern.contains(stroke_pattern))
+            for unit in split_stroke_pattern(stroke_pattern):
+                query = query.where(Hanzi.stroke_pattern.contains(unit))
         result = await self.db.execute(query)
         return int(result.scalar() or 0)
 

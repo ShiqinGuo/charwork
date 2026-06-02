@@ -57,7 +57,7 @@ class HanziRepository:
             normalized = normalize_pinyin_keyword(pinyin)
             if normalized:
                 query = query.where(
-                    func.lower(func.replace(func.coalesce(Hanzi.pinyin, ""), " ", "")).contains(normalized)
+                    func.lower(func.replace(func.coalesce(Hanzi.pinyin, ""), " ", "")).startswith(normalized)
                 )
         if stroke_count is not None:
             query = query.where(Hanzi.stroke_count == stroke_count)
@@ -79,7 +79,7 @@ class HanziRepository:
             )
         if normalized_keyword:
             conditions.append(
-                func.lower(func.replace(func.coalesce(Hanzi.pinyin, ""), " ", "")).contains(normalized_keyword)
+                func.lower(func.replace(func.coalesce(Hanzi.pinyin, ""), " ", "")).startswith(normalized_keyword)
             )
         if conditions:
             query = query.where(or_(*conditions))

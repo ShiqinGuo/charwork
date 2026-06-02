@@ -128,7 +128,7 @@ class HanziDictionarySearchService(BaseSearchService):
             filters.append({"wildcard": {"character": {"value": f"*{character_keyword}*"}}})
         normalized_pinyin = normalize_pinyin_keyword(pinyin)
         if normalized_pinyin:
-            filters.append({"wildcard": {"pinyin_normalized": {"value": f"*{normalized_pinyin}*"}}})
+            filters.append({"wildcard": {"pinyin_normalized": {"value": f"{normalized_pinyin}*"}}})
         if stroke_count is not None:
             filters.append({"term": {"stroke_count": stroke_count}})
         keyword_filter = self._build_keyword_filter(keyword)
@@ -168,7 +168,7 @@ class HanziDictionarySearchService(BaseSearchService):
         if trimmed:
             clauses.append({"wildcard": {"character": {"value": f"*{trimmed}*"}}})
         if normalized:
-            clauses.append({"wildcard": {"pinyin_normalized": {"value": f"*{normalized}*"}}})
+            clauses.append({"wildcard": {"pinyin_normalized": {"value": f"{normalized}*"}}})
         if not clauses:
             return None
         return {"bool": {"should": clauses, "minimum_should_match": 1}}

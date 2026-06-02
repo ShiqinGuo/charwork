@@ -221,19 +221,18 @@ class AssignmentService:
         return await self.get_assignment(updated_assignment.id)
 
     async def delete_assignment(self, id: str) -> bool:
-        """
-        功能描述：
-            删除作业。
+        """删除作业及其关联的提交记录。"""
+        from sqlalchemy import delete as sql_delete
+        from app.models.submission import Submission
 
-        参数：
-            id (str): 目标记录ID。
-        返回值：
-            bool: 返回操作是否成功。
-        """
         assignment = await self.repo.get(id)
         if not assignment:
             return False
 
+        # 先删除该作业下的所有提交记录（避免 FK NOT NULL 约束冲突）
+        await self.repo.db.execute(
+            sql_delete(Submission).where(Submission.assignment_id == id)
+        )
         await self.repo.delete(assignment)
         return True
 

@@ -1,4 +1,5 @@
 import csv
+import io
 import json
 import os
 import shutil
@@ -172,6 +173,150 @@ class ExportService:
             "dataset_id": dataset.id,
             "dataset_name": dataset.name,
         }
+
+    async def export_dataset_html(
+        self,
+        dataset_id: str,
+        current_user_id: str,
+        hanzi_ids: Optional[list[str]] = None,
+        character: Optional[str] = None,
+        pinyin: Optional[str] = None,
+        stroke_pattern: Optional[str] = None,
+        format: str = "html+csv",
+    ) -> tuple[io.BytesIO, str]:
+        """导出数据集，format="html+csv" 导出 index.html + data.csv，"csv" 仅导出 CSV。"""
+        dataset = await self.dataset_repo.get(dataset_id, current_user_id)
+        if not dataset:
+            raise ValueError("数据集不存在")
+
+        if hanzi_ids:
+            items = await self._fetch_items_by_ids(hanzi_ids, current_user_id, dataset_id)
+        else:
+            items = await self.dataset_repo.list_items(
+                dataset_id=dataset_id,
+                created_by_user_id=current_user_id,
+                skip=0, limit=100000,
+                character=character,
+                pinyin=pinyin,
+                stroke_pattern=stroke_pattern,
+            )
+
+        if not items:
+            raise ValueError("没有符合条件的记录可导出")
+
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        safe_name = dataset.name.replace("/", "_").replace("\\", "_")[:50]
+
+        # CSV 永远生成，HTML 按格式决定
+        want_html = "html" in format
+        rows_html_parts: list[str] = []
+        csv_lines: list[str] = ["图片URL,汉字,拼音,笔画,笔画模式,结构,字形,等级,来源,备注"]
+        for item in items:
+            img_url = (item.image_path or "").strip()
+            char = item.character or ""
+            pinyin = item.pinyin or ""
+            stroke_count = str(item.stroke_count) if item.stroke_count else ""
+            stroke_pattern = item.stroke_pattern or ""
+            structure = getattr(item, "structure", "") or ""
+            variant = getattr(item, "variant", "") or ""
+            level = getattr(item, "level", "") or ""
+            source = item.source or ""
+            comment = getattr(item, "comment", "") or ""
+
+            if want_html:
+                img_cell = f'<img src="{img_url}" loading="lazy" onerror="this.alt=\'—\'" />' if img_url else "—"
+                rows_html_parts.append(
+                    f"<tr>"
+                    f"<td>{img_cell}</td>"
+                    f"<td class=\"char\">{char}</td>"
+                    f"<td>{pinyin}</td>"
+                    f"<td>{stroke_count}</td>"
+                    f"<td>{stroke_pattern}</td>"
+                    f"<td>{structure}</td>"
+                    f"<td>{variant}</td>"
+                    f"<td>{level}</td>"
+                    f"<td>{source}</td>"
+                    f"<td>{comment}</td>"
+                    f"</tr>"
+                )
+
+            csv_lines.append(
+                ",".join(
+                    f'"{v}"'
+                    for v in [
+                        img_url, char, pinyin, stroke_count, stroke_pattern,
+                        structure, variant, level, source, comment,
+                    ]
+                )
+            )
+
+        # 打包 ZIP
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("data.csv", "\n".join(csv_lines).encode("utf-8-sig"))
+            if want_html:
+                html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{dataset.name} - 数据集导出</title>
+<style>
+*,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:"Microsoft YaHei","PingFang SC",sans-serif;color:#333;background:#fafafa;padding:24px}}
+h1{{font-size:20px;margin-bottom:4px}}
+.meta{{color:#999;font-size:13px;margin-bottom:20px}}
+table{{border-collapse:collapse;width:100%;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06)}}
+th{{background:#2d2d2d;color:#fff;font-weight:600;font-size:13px;padding:10px 12px;text-align:left;white-space:nowrap}}
+td{{padding:8px 12px;border-bottom:1px solid #eee;font-size:14px;vertical-align:middle}}
+tr:nth-child(even) td{{background:#f9f9f9}}
+.char{{font-family:"Noto Serif SC",serif;font-size:22px;font-weight:600}}
+img{{width:60px;height:60px;object-fit:contain;border-radius:4px;border:1px solid #e5e5e5;display:block}}
+</style>
+</head>
+<body>
+<h1>{dataset.name}</h1>
+<p class="meta">导出时间：{datetime.now().strftime("%Y-%m-%d %H:%M")}　共 {len(items)} 条</p>
+<table>
+<thead><tr>
+<th>图片</th><th>汉字</th><th>拼音</th><th>笔画</th><th>笔画模式</th>
+<th>结构</th><th>字形</th><th>等级</th><th>来源</th><th>备注</th>
+</tr></thead>
+<tbody>
+{chr(10).join(rows_html_parts)}
+</tbody>
+</table>
+</body>
+</html>"""
+                zf.writestr("index.html", html.encode("utf-8"))
+        zip_buf.seek(0)
+
+        filename = f"{safe_name}_{timestamp}.zip"
+        return zip_buf, filename
+
+    async def _fetch_items_by_ids(
+        self, hanzi_ids: list[str], current_user_id: str, dataset_id: str
+    ) -> list:
+        """按 ID 列表获取条目，验证归属权限。"""
+        from app.models.hanzi import Hanzi
+        from app.models.hanzi_dictionary import DatasetHanziRelation
+        from sqlalchemy import or_
+
+        if not hanzi_ids:
+            return []
+        result = await self.db.execute(
+            select(Hanzi)
+            .join(DatasetHanziRelation, DatasetHanziRelation.hanzi_id == Hanzi.id)
+            .where(
+                DatasetHanziRelation.dataset_id == dataset_id,
+                Hanzi.id.in_(hanzi_ids),
+                or_(Hanzi.created_by_user_id == current_user_id,
+                    Hanzi.created_by_user_id.is_(None)),
+            )
+        )
+        return result.scalars().all()
+
+
 
     def _copy_image_to_package(self, image_path: Optional[str], images_dir: str, index: int) -> Optional[str]:
         resolved_path = self._resolve_image_path(image_path)

@@ -101,6 +101,9 @@ class OCRService:
         res = self.imagex_service.upload_image(params, [image_path])
         return {"URI": res.get("Results", [{}])[0].get("Uri", ""), "StoreKey": store_key, "raw": res}
 
+    # 签名 URL 有效期（秒），30 天
+    IMAGEX_URL_TTL = 2592000
+
     def _transform_uri2url(self, uri: str) -> str:
         """
         功能描述：
@@ -117,6 +120,9 @@ class OCRService:
             "Domain": settings.IMAGEX_DEFAULT_DOMAIN,
             "URI": uri,
             "Tpl": settings.IMAGEX_TEMPLATE_ID,
+            "Proto": "https",
+            "Format": "jpeg",
+            "Timestamp": self.IMAGEX_URL_TTL,
         }
         return self.imagex_service.get_resource_url(params).get("Result", {}).get("URL", "")
 

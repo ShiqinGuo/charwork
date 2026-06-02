@@ -1,12 +1,14 @@
+import urllib.parse
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_teacher, get_current_user
 from app.core.database import get_db
 from app.core.security import SessionUser
 from app.models.teacher import Teacher
-from app.schemas.import_export import ExportRequest
+from app.schemas.import_export import DatasetExcelExportRequest, ExportRequest
 from app.services.export_service import ExportService
 
 
@@ -62,6 +64,39 @@ async def export_hanzi_dataset(
     service = ExportService(db)
     try:
         return await service.export_dataset_package(dataset_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"导出失败：{str(e)}")
+
+
+@router.post("/hanzi-datasets/{dataset_id}/excel")
+async def export_hanzi_dataset_excel(
+    dataset_id: str,
+    req: DatasetExcelExportRequest,
+    current_user: SessionUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """导出数据集为 HTML 页面（图片通过 img 标签加载），可选附带 CSV，打包为 ZIP。"""
+    service = ExportService(db)
+    try:
+        buffer, filename = await service.export_dataset_html(
+            dataset_id=dataset_id,
+            current_user_id=current_user.id,
+            hanzi_ids=req.hanzi_ids,
+            character=req.character,
+            pinyin=req.pinyin,
+            stroke_pattern=req.stroke_pattern,
+            format=req.format,
+        )
+        encoded_filename = urllib.parse.quote(filename)
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            },
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
