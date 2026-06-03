@@ -40,7 +40,12 @@ STUDENT_ID_PATTERN = re.compile(r"(stu_[a-zA-Z0-9]+|[a-zA-Z0-9]{10,50})")
 SYSTEM_PROMPT = (
     "你是教师工作台中的教学助手。\n"
     "你可以使用 search_resources 工具搜索课程、作业、学生、教学班级、汉字、讨论等资源。\n"
-    "当用户要求查找或筛选资源时，主动调用搜索工具，将结果以列表形式呈现，每条结果附带可点击的链接。\n"
+    "你可以使用 search_hanzi_dictionary 工具从共享汉字字典中按拼音、笔画数、笔画模式等条件精确查询汉字。\n"
+    "当用户要求根据拼音推荐汉字时，先用 search_hanzi_dictionary 以拼音条件查询所有同音字，"
+    "再多次调用该工具以不同笔画数范围（如 1-5 画、6-10 画、11-15 画、16+ 画）分批获取，"
+    "最后从各笔画段中挑选共 10 个拼音相近但笔画差异大的汉字，以简洁表格形式列出（序号、汉字、拼音、笔画数）。"
+    "每个推荐汉字需附带 id 字段以便前端勾选添加。\n"
+    "当用户要求查找或筛选资源时，主动调用搜索工具，将结果以列表形式呈现。\n"
     "优先依据工具结果回答，结论要简洁，给出可执行建议。\n"
     "如缺少必要上下文，要明确指出。"
 )
@@ -74,6 +79,45 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["keyword"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_hanzi_dictionary",
+            "description": (
+                "搜索共享汉字字典，支持拼音、笔画数范围、笔画模式、汉字精确匹配。"
+                "可用于根据拼音推荐笔画差异大的汉字。返回含 id、character、pinyin、stroke_count、stroke_pattern 的列表。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pinyin": {
+                        "type": "string",
+                        "description": "拼音全拼或首字母，如 'shu'",
+                    },
+                    "stroke_count_min": {
+                        "type": "integer",
+                        "description": "最小笔画数，如 1",
+                    },
+                    "stroke_count_max": {
+                        "type": "integer",
+                        "description": "最大笔画数，如 10",
+                    },
+                    "stroke_pattern": {
+                        "type": "string",
+                        "description": "笔画模式，如 'heng-shu-pie-na'",
+                    },
+                    "character": {
+                        "type": "string",
+                        "description": "精确汉字，如 '书'",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "返回数量上限，默认 50",
+                    },
+                },
             },
         },
     },
@@ -119,10 +163,22 @@ class AIChatService:
             limit=args.get("limit", 10),
         )
 
+    def _tool_search_hanzi_dictionary(self, args: dict[str, Any], _teacher_user_id: str):
+        """工具: search_hanzi_dictionary"""
+        return self.tools_service.search_hanzi_dictionary(
+            pinyin=args.get("pinyin"),
+            stroke_count_min=args.get("stroke_count_min"),
+            stroke_count_max=args.get("stroke_count_max"),
+            stroke_pattern=args.get("stroke_pattern"),
+            character=args.get("character"),
+            limit=args.get("limit", 50),
+        )
+
     @property
     def _TOOL_HANDLERS(self) -> dict[str, Callable[..., Any]]:
         return {
             "search_resources": self._tool_search_resources,
+            "search_hanzi_dictionary": self._tool_search_hanzi_dictionary,
         }
 
     async def _execute_tool(

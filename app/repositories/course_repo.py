@@ -2,6 +2,7 @@ from typing import Optional
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.course import Course, CourseTeachingClass
 from app.models.teaching_class import TeachingClassMember, TeachingClassMemberStatus
@@ -15,7 +16,11 @@ class CourseRepository:
         self.db = db
 
     async def get(self, id: str) -> Optional[Course]:
-        result = await self.db.execute(select(Course).where(Course.id == id))
+        result = await self.db.execute(
+            select(Course)
+            .where(Course.id == id)
+            .options(selectinload(Course.class_links))
+        )
         return result.scalars().first()
 
     async def list_by_teaching_class(self, teaching_class_id: str) -> list[Course]:
@@ -48,7 +53,7 @@ class CourseRepository:
         teacher_id: Optional[str] = None,
         status: Optional[str] = None,
     ) -> list[Course]:
-        query = select(Course)
+        query = select(Course).options(selectinload(Course.class_links))
         if teaching_class_id:
             query = (
                 query.join(CourseTeachingClass, CourseTeachingClass.course_id == Course.id)

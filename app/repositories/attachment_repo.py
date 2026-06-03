@@ -40,8 +40,7 @@ class AttachmentRepository:
             mime_type=attachment_in.mime_type,
         )
         self.db.add(attachment)
-        await self.db.commit()
-        await self.db.refresh(attachment)
+        await self.db.flush()
         return attachment
 
     async def get(self, id: str) -> Optional[Attachment]:

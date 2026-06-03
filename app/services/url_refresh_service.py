@@ -75,17 +75,18 @@ class UrlRefreshService:
 
         # 只刷超过 15 分钟未刷新的记录，避免同一轮反复签
         threshold = datetime.now(timezone.utc) - timedelta(minutes=_REFRESH_THRESHOLD_MINUTES)
-        base_stmt = (
-            select(model_cls)
-            .where(uri_col.isnot(None))
-            .where(
-                (refreshed_at_col.is_(None)) | (refreshed_at_col < threshold)
-            )
-            .limit(batch_size)
-        )
+        # 每轮处理的批量大小，避免一次性加载过多 ORM 对象导致 MemoryError
+        chunk_size = min(batch_size, 200)
 
         while True:
-            result = await db.execute(base_stmt)
+            result = await db.execute(
+                select(model_cls)
+                .where(uri_col.isnot(None))
+                .where(
+                    (refreshed_at_col.is_(None)) | (refreshed_at_col < threshold)
+                )
+                .limit(chunk_size)
+            )
             rows = result.scalars().all()
             if not rows:
                 break

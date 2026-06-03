@@ -132,6 +132,37 @@ class AIToolsService:
             "quality_level": quality_level,
         }
 
+    async def search_hanzi_dictionary(
+        self,
+        pinyin: str | None = None,
+        stroke_count_min: int | None = None,
+        stroke_count_max: int | None = None,
+        stroke_pattern: str | None = None,
+        character: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """搜索共享汉字字典，AI 可组合条件多轮调用后自行筛选推荐。"""
+        from app.services.hanzi_dictionary_search_service import HanziDictionarySearchService
+
+        svc = HanziDictionarySearchService(self.db)
+        result = await svc.search(
+            keyword=character or pinyin or "",
+            pinyin=pinyin,
+            stroke_count=stroke_count_min,
+            limit=limit,
+        )
+        items = [
+            {
+                "id": item.get("dictionary_id", ""),
+                "character": item.get("character", ""),
+                "pinyin": item.get("pinyin", ""),
+                "stroke_count": item.get("stroke_count", 0),
+                "stroke_pattern": item.get("stroke_pattern", ""),
+            }
+            for item in result.get("items", [])
+        ]
+        return {"total": result.get("total", 0), "items": items}
+
     async def _get_student(self, student_id: str) -> Student | None:
         result = await self.db.execute(select(Student).where(Student.id == student_id))
         return result.scalars().first()

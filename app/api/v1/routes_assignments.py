@@ -194,6 +194,7 @@ async def upload_assignment_attachment(
             owner_type="assignment",
             owner_id="",
         )
+        await db.commit()
         return attachment
     except ValueError as exc:
         raise _bad_request_error(exc) from exc

@@ -153,7 +153,11 @@ class HanziDictionarySearchService(BaseSearchService):
         total = int((hits.get("total") or {}).get("value", 0))
         ids = [str(item.get("_source", {}).get("dictionary_id") or "") for item in items]
         ids = [dictionary_id for dictionary_id in ids if dictionary_id]
-        return {"ids": ids, "total": total}
+        items_data = [
+            {k: v for k, v in (item.get("_source") or {}).items() if k != "stroke_units" and k != "stroke_unit_counts"}
+            for item in items
+        ]
+        return {"ids": ids, "total": total, "items": items_data}
 
     async def _get_dictionary_item(self, dictionary_id: str) -> Optional[HanziDictionary]:
         result = await self.db.execute(select(HanziDictionary).where(HanziDictionary.id == dictionary_id))

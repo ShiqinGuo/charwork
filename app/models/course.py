@@ -58,7 +58,7 @@ class CourseTeachingClass(Base):
     teaching_class: Mapped["TeachingClass"] = relationship("TeachingClass")
 
     __table_args__ = (
-        UniqueConstraint("course_id", "teaching_class_id", name="uq_course_teaching_class"),
+        UniqueConstraint("teaching_class_id", name="uq_course_teaching_class_tcid"),
     )
 
     def __repr__(self):

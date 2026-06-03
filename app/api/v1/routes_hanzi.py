@@ -39,9 +39,9 @@ router = APIRouter()
 @router.get("/", response_model=HanziListResponse)
 async def list_hanzi(
     skip: Optional[int] = Query(None, ge=0),
-    limit: Optional[int] = Query(None, ge=1, le=100),
+    limit: Optional[int] = Query(None, ge=1, le=1000),
     page: Optional[int] = Query(None, ge=1),
-    size: Optional[int] = Query(None, ge=1, le=100),
+    size: Optional[int] = Query(None, ge=1, le=1000),
     character: Optional[str] = None,
     pinyin: Optional[str] = None,
     stroke_count: Optional[int] = Query(None, ge=1),
@@ -129,9 +129,9 @@ async def get_strokes(character: str, db: AsyncSession = Depends(get_db)):
 async def stroke_search(
     pattern: str = Query(..., min_length=1),
     skip: Optional[int] = Query(None, ge=0),
-    limit: Optional[int] = Query(None, ge=1, le=100),
+    limit: Optional[int] = Query(None, ge=1, le=1000),
     page: Optional[int] = Query(None, ge=1),
-    size: Optional[int] = Query(None, ge=1, le=100),
+    size: Optional[int] = Query(None, ge=1, le=1000),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -188,9 +188,9 @@ async def initialize_dictionary(
 @router.get("/dictionary", response_model=HanziDictionaryListResponse)
 async def list_dictionary_entries(
     skip: Optional[int] = Query(None, ge=0),
-    limit: Optional[int] = Query(None, ge=1, le=100),
+    limit: Optional[int] = Query(None, ge=1, le=1000),
     page: Optional[int] = Query(None, ge=1),
-    size: Optional[int] = Query(None, ge=1, le=100),
+    size: Optional[int] = Query(None, ge=1, le=1000),
     character: Optional[str] = Query(None),
     pinyin: Optional[str] = Query(None),
     stroke_count: Optional[int] = Query(None, ge=1),
@@ -260,9 +260,9 @@ async def get_dictionary_entry(
 @router.get("/datasets", response_model=HanziDatasetListResponse)
 async def list_hanzi_datasets(
     skip: Optional[int] = Query(None, ge=0),
-    limit: Optional[int] = Query(None, ge=1, le=100),
+    limit: Optional[int] = Query(None, ge=1, le=1000),
     page: Optional[int] = Query(None, ge=1),
-    size: Optional[int] = Query(None, ge=1, le=100),
+    size: Optional[int] = Query(None, ge=1, le=1000),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -322,9 +322,9 @@ async def get_hanzi_dataset(
 async def list_hanzi_dataset_items(
     dataset_id: str,
     skip: Optional[int] = Query(None, ge=0),
-    limit: Optional[int] = Query(None, ge=1, le=100),
+    limit: Optional[int] = Query(None, ge=1, le=1000),
     page: Optional[int] = Query(None, ge=1),
-    size: Optional[int] = Query(None, ge=1, le=100),
+    size: Optional[int] = Query(None, ge=1, le=1000),
     character: Optional[str] = Query(None),
     pinyin: Optional[str] = Query(None),
     stroke_pattern: Optional[str] = Query(None),
