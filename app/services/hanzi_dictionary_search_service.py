@@ -1,0 +1,221 @@
+"""
+为什么这样做：共享字典检索独立索引，支持拼音与笔画组合查询，避免数据库全文扫描开销。
+特殊逻辑：笔画重复次数通过动态字段 + 脚本过滤校验，保证"包含且数量满足"的边界语义。
+"""
+
+import logging
+from datetime import datetime
+from typing import Any, Optional
+
+from elasticsearch import NotFoundError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.models.hanzi_dictionary import HanziDictionary
+from app.schemas.search import ReindexResponse
+from app.services.base_search_service import BaseSearchService
+from app.utils.hanzi_dictionary_parser import (
+    build_stroke_unit_count_fields,
+    build_stroke_unit_counts,
+    encode_stroke_unit_key,
+    normalize_pinyin_keyword,
+    split_stroke_pattern,
+)
+
+
+logger = logging.getLogger(__name__)
+
+
+class HanziDictionarySearchService(BaseSearchService):
+    REINDEX_BULK_CHUNK_SIZE = 500
+
+    def __init__(self, db: AsyncSession):
+        super().__init__(db)
+        self.index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}_hanzi_dictionary"
+
+    async def _create_index(self) -> None:
+        await self.es.indices.create(
+            index=self.index_name,
+            body={
+                "mappings": {
+                    "properties": {
+                        "dictionary_id": {"type": "keyword"},
+                        "character": {"type": "keyword"},
+                        "pinyin": {"type": "keyword"},
+                        "pinyin_normalized": {"type": "keyword"},
+                        "stroke_count": {"type": "integer"},
+                        "stroke_pattern": {"type": "keyword", "ignore_above": 1024},
+                        "stroke_units": {"type": "keyword"},
+                        "stroke_unit_counts": {"type": "object", "dynamic": True},
+                        "source": {"type": "keyword"},
+                        "updated_at": {"type": "date"},
+                    }
+                }
+            },
+        )
+
+    async def ensure_index_with_bootstrap(self) -> ReindexResponse:
+        await self.ensure_index()
+        count_response = await self.es.count(index=self.index_name)
+        total = int(count_response.get("count", 0))
+        if total > 0:
+            return ReindexResponse(status="success", indexed=0, failed=0)
+        return await self.reindex()
+
+    async def reindex(self) -> ReindexResponse:
+        exists = await self.es.indices.exists(index=self.index_name)
+        if exists:
+            try:
+                await self.es.indices.delete(index=self.index_name)
+            except NotFoundError:
+                pass
+        # 清除缓存，因为索引刚被删除
+        BaseSearchService.invalidate_index_cache(self.index_name)
+        await self.ensure_index()
+        items = (await self.db.execute(select(HanziDictionary))).scalars().all()
+        actions = [
+            {
+                "_op_type": "index",
+                "_index": self.index_name,
+                "_id": self._document_id(item.id),
+                "_source": self._build_document(item),
+            }
+            for item in items
+        ]
+        success, failed = await self._bulk_index(actions)
+        if success > 0:
+            await self._refresh_index_safe()
+        return self._build_reindex_response(success, failed)
+
+    async def index_document(self, item: HanziDictionary, refresh: bool = False) -> None:
+        await self._index_document(self._document_id(item.id), self._build_document(item), refresh=refresh)
+
+    async def delete_document(self, dictionary_id: str, refresh: bool = False) -> None:
+        try:
+            await self.es.delete(index=self.index_name, id=self._document_id(dictionary_id), refresh=refresh)
+        except NotFoundError:
+            return
+
+    async def apply_cdc_change(self, operation: str, data: dict[str, Any]) -> None:
+        await self.ensure_index()
+        dictionary_id = str(data.get("id") or "")
+        if not dictionary_id:
+            return
+        if operation == "delete":
+            await self.delete_document(dictionary_id, refresh=False)
+            return
+        item = await self._get_dictionary_item(dictionary_id)
+        if not item:
+            await self.delete_document(dictionary_id, refresh=False)
+            return
+        await self.index_document(item, refresh=False)
+
+    async def search(
+        self,
+        skip: int = 0,
+        limit: int = 20,
+        character: Optional[str] = None,
+        pinyin: Optional[str] = None,
+        stroke_count: Optional[int] = None,
+        stroke_pattern: Optional[str] = None,
+        keyword: Optional[str] = None,
+    ) -> dict[str, Any]:
+        await self.ensure_index()
+        filters: list[dict[str, Any]] = []
+        character_keyword = (character or "").strip()
+        if character_keyword:
+            filters.append({"wildcard": {"character": {"value": f"*{character_keyword}*"}}})
+        normalized_pinyin = normalize_pinyin_keyword(pinyin)
+        if normalized_pinyin:
+            filters.append({"wildcard": {"pinyin_normalized": {"value": f"{normalized_pinyin}*"}}})
+        if stroke_count is not None:
+            filters.append({"term": {"stroke_count": stroke_count}})
+        keyword_filter = self._build_keyword_filter(keyword)
+        if keyword_filter:
+            filters.append(keyword_filter)
+        filters.extend(self._build_stroke_pattern_filters(stroke_pattern))
+        response = await self.es.search(
+            index=self.index_name,
+            body={
+                "query": {"bool": {"filter": filters}},
+                "sort": [
+                    {"stroke_count": {"order": "asc", "missing": "_last"}},
+                    {"character": {"order": "asc"}},
+                ],
+                "from": skip,
+                "size": limit,
+                "track_total_hits": True,
+            },
+        )
+        hits = response.get("hits", {})
+        items = hits.get("hits", [])
+        total = int((hits.get("total") or {}).get("value", 0))
+        ids = [str(item.get("_source", {}).get("dictionary_id") or "") for item in items]
+        ids = [dictionary_id for dictionary_id in ids if dictionary_id]
+        items_data = [
+            {k: v for k, v in (item.get("_source") or {}).items() if k != "stroke_units" and k != "stroke_unit_counts"}
+            for item in items
+        ]
+        return {"ids": ids, "total": total, "items": items_data}
+
+    async def _get_dictionary_item(self, dictionary_id: str) -> Optional[HanziDictionary]:
+        result = await self.db.execute(select(HanziDictionary).where(HanziDictionary.id == dictionary_id))
+        return result.scalars().first()
+
+    def _build_keyword_filter(self, keyword: Optional[str]) -> Optional[dict[str, Any]]:
+        if not keyword:
+            return None
+        trimmed = keyword.strip()
+        normalized = normalize_pinyin_keyword(keyword)
+        clauses: list[dict[str, Any]] = []
+        if trimmed:
+            clauses.append({"wildcard": {"character": {"value": f"*{trimmed}*"}}})
+        if normalized:
+            clauses.append({"wildcard": {"pinyin_normalized": {"value": f"{normalized}*"}}})
+        if not clauses:
+            return None
+        return {"bool": {"should": clauses, "minimum_should_match": 1}}
+
+    def _build_stroke_pattern_filters(self, stroke_pattern: Optional[str]) -> list[dict[str, Any]]:
+        query_counts = build_stroke_unit_counts(stroke_pattern)
+        if not query_counts:
+            return []
+        filters: list[dict[str, Any]] = [{"term": {"stroke_units": unit}} for unit in query_counts]
+        repeated_counts = {unit: count for unit, count in query_counts.items() if count > 1}
+        if not repeated_counts:
+            return filters
+        script_lines = []
+        for unit, count in repeated_counts.items():
+            field_key = encode_stroke_unit_key(unit)
+            field_name = f"stroke_unit_counts.{field_key}"
+            script_lines.append(
+                (
+                    f"if (!doc.containsKey('{field_name}') "
+                    f"|| doc['{field_name}'].size() == 0 "
+                    f"|| doc['{field_name}'].value < {count}) return false;"
+                )
+            )
+        script_lines.append("return true;")
+        filters.append({"script": {"script": {"lang": "painless", "source": " ".join(script_lines)}}})
+        return filters
+
+    @staticmethod
+    def _document_id(dictionary_id: str) -> str:
+        return f"hanzi_dictionary_{dictionary_id}"
+
+    @staticmethod
+    def _build_document(item: HanziDictionary) -> dict[str, Any]:
+        updated_at = item.updated_at.isoformat() if isinstance(item.updated_at, datetime) else item.updated_at
+        return {
+            "dictionary_id": item.id,
+            "character": item.character,
+            "pinyin": item.pinyin or "",
+            "pinyin_normalized": normalize_pinyin_keyword(item.pinyin),
+            "stroke_count": item.stroke_count,
+            "stroke_pattern": item.stroke_pattern or "",
+            "stroke_units": split_stroke_pattern(item.stroke_pattern),
+            "stroke_unit_counts": build_stroke_unit_count_fields(item.stroke_pattern),
+            "source": item.source,
+            "updated_at": updated_at,
+        }

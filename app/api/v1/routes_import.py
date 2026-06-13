@@ -16,6 +16,16 @@ router = APIRouter()
 
 
 def get_redis() -> Redis:
+    """
+    功能描述：
+        按条件获取Redis。
+
+    参数：
+        无。
+
+    返回值：
+        Redis: 返回查询到的结果对象。
+    """
     return Redis.from_url(settings.REDIS_URL)
 
 
@@ -25,6 +35,18 @@ async def create_import_task(
     json_level: Optional[UploadFile] = File(None),
     json_comment: Optional[UploadFile] = File(None),
 ):
+    """
+    功能描述：
+        创建导入任务并返回结果。
+
+    参数：
+        image_zip (UploadFile): FastAPI 上传文件对象。
+        json_level (Optional[UploadFile]): FastAPI 上传文件对象。
+        json_comment (Optional[UploadFile]): FastAPI 上传文件对象。
+
+    返回值：
+        None: 无返回值。
+    """
     if not image_zip.filename:
         raise HTTPException(status_code=400, detail="缺少图片 ZIP 文件")
 
@@ -45,6 +67,16 @@ async def create_import_task(
 
 @router.get("/tasks/{task_id}/logs")
 async def get_import_logs(task_id: str):
+    """
+    功能描述：
+        按条件获取导入日志。
+
+    参数：
+        task_id (str): 任务ID。
+
+    返回值：
+        None: 无返回值。
+    """
     redis_client = get_redis()
     key = f"task_logs:{task_id}"
     raw_items = redis_client.lrange(key, 0, -1)
@@ -59,10 +91,30 @@ async def get_import_logs(task_id: str):
 
 @router.get("/tasks/{task_id}/events")
 async def stream_import_logs(task_id: str):
+    """
+    功能描述：
+        处理导入日志。
+
+    参数：
+        task_id (str): 任务ID。
+
+    返回值：
+        None: 无返回值。
+    """
     redis_client = get_redis()
     key = f"task_logs:{task_id}"
 
     async def event_generator():
+        """
+        功能描述：
+            处理generator。
+
+        参数：
+            无。
+
+        返回值：
+            None: 无返回值。
+        """
         last_index = 0
         while True:
             length = redis_client.llen(key)

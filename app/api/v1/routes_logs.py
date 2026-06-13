@@ -17,6 +17,16 @@ class FrontendLog(BaseModel):
 
 @router.post("/")
 async def report_log(body: FrontendLog):
+    """
+    功能描述：
+        处理日志。
+
+    参数：
+        body (FrontendLog): 接口请求体对象。
+
+    返回值：
+        None: 无返回值。
+    """
     level = body.level.lower()
     if level == "error":
         logger.error(body.message, extra={"meta": body.meta})

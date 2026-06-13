@@ -4,7 +4,6 @@ from pydantic import BaseModel, ConfigDict
 
 
 class MessageCreate(BaseModel):
-    sender_id: str
     receiver_id: str
     title: Optional[str] = None
     content: str

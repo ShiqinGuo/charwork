@@ -10,7 +10,7 @@ class StudentBase(BaseModel):
 
 
 class StudentCreate(StudentBase):
-    pass
+    teaching_class_id: str
 
 
 class StudentUpdate(BaseModel):

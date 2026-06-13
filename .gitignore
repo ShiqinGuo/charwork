@@ -1,6 +1,14 @@
 .env
+.trae/
 migrations/
 .vscode/
 .venv/
 charwork.egg-info/
 __pycache__/
+test*.py
+CLAUDE.md
+AGENTS.md
+.claude/
+.kiro
+docs/
+.playwright-mcp/
